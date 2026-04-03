@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="theme-color" content="#008f6a"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<title>Health — AndreLowyx</title>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="stylesheet" href="/shared.css"/>
+<style>
+body{padding-bottom:80px;}
+.metrics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}
+@media(max-width:768px){.metrics-grid{grid-template-columns:repeat(2,1fr);}body{padding-bottom:100px;}}
+</style>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+const cfg={apiKey:"AIzaSyCWhxW0cSmapylAoIJaSchZbmLouTqtKqg",authDomain:"andrelowyx.firebaseapp.com",projectId:"andrelowyx",storageBucket:"andrelowyx.firebasestorage.app",messagingSenderId:"364014179844",appId:"1:364014179844:web:e0c2726b5cc9364ab4c751"};
+const app=initializeApp(cfg);const auth=getAuth(app);const db=getFirestore(app);
+let currentUser=null,saveTimer=null;
+window._fbSignOut=async()=>{await signOut(auth);window.location.href='/index.html';};
+async function loadData(uid){
+  try{
+    const snap=await getDoc(doc(db,'finvault',uid));
+    if(snap.exists()){const d=snap.data();
+      if(d.health&&Array.isArray(d.health))state.health=d.health;
+      if(d.healthGoals)state.goals={...state.goals,...d.healthGoals};
+      if(d.foodLib&&Array.isArray(d.foodLib))state.foodLib=d.foodLib;
+      if(d.exerciseLib&&Array.isArray(d.exerciseLib))state.exerciseLib=d.exerciseLib;
+      if(d.theme){state.theme=d.theme;applyTheme(d.theme);syncThemeBtn(d.theme);}
+    }
+  }catch(e){console.error(e);}
+}
+window._fbSave=(data)=>{
+  if(!currentUser)return;clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{
+    try{
+      const snap=await getDoc(doc(db,'finvault',currentUser.uid));
+      const ex=snap.exists()?snap.data():{};
+      await setDoc(doc(db,'finvault',currentUser.uid),{...ex,health:data.health,healthGoals:data.goals,foodLib:data.foodLib,exerciseLib:data.exerciseLib,updatedAt:Date.now()});
+      showBadge();
+    }catch(e){console.error(e);}
+  },800);
+};
+onAuthStateChanged(auth,async user=>{
+  if(user){currentUser=user;
+    const n=document.getElementById('user-name'),at=document.getElementById('user-avatar-txt'),ai=document.getElementById('user-avatar-img');
+    if(n)n.textContent=user.displayName?.split(' ')[0]||'User';
+    if(at)at.textContent=(user.displayName||'U')[0].toUpperCase();
+    if(ai&&user.photoURL){ai.src=user.photoURL;ai.style.display='block';if(at)at.style.display='none';}
+    await loadData(user.uid);initApp();
+  }else{window.location.href='/index.html';}
+});
+</script>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="confirm-overlay"><div class="confirm-box"><div class="confirm-title" id="confirm-title"></div><div class="confirm-msg" id="confirm-msg"></div><div class="confirm-actions"><button class="btn btn-ghost" onclick="confirmResolve(false)">Cancel</button><button class="btn btn-danger" id="confirm-ok" onclick="confirmResolve(true)">Delete</button></div></div></div>
+<div class="sidebar-overlay" id="sb-overlay" onclick="closeSidebar()"></div>
+<div class="app" id="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="logo-wrap">
+      <div><div class="logo-mark" style="font-size:16px;font-weight:800;letter-spacing:-.03em;"><span style="color:var(--green);">Andre</span>Lowyx</div><div class="logo-sub">// finance os</div></div>
+    </div>
+    <nav class="nav">
+      <div class="ni" id="ni-dashboard" onclick="showPage('dashboard',this)">
+        <svg viewBox="0 0 16 16" fill="currentColor" style="width:15px;height:15px;flex-shrink:0;"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>Dashboard
+      </div>
+      <div class="ni" id="ni-accounts" onclick="showPage('accounts',this)">
+        <svg viewBox="0 0 16 16" fill="currentColor" style="width:15px;height:15px;flex-shrink:0;"><path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v1H2V4zm0 3h12v5a2 2 0 01-2 2H4a2 2 0 01-2-2V7zm3 2a1 1 0 000 2h1a1 1 0 000-2H5z"/></svg>Accounts
+      </div>
+      <div class="ni" id="ni-health" class="active" style="background:var(--gdim);color:var(--green);" onclick="window.location.href='health.html'"><svg viewBox="0 0 16 16" fill="currentColor" style="width:15px;height:15px;flex-shrink:0;"><path d="M8 1.5C5 1.5 2.5 4 2.5 7c0 4 5.5 7.5 5.5 7.5S13.5 11 13.5 7c0-3-2.5-5.5-5.5-5.5zm0 7.5a2 2 0 110-4 2 2 0 010 4z"/></svg>Health
+      </div>
+      <div class="ni" id="ni-trips" onclick="window.location.href='trips.html'"><svg viewBox="0 0 16 16" fill="currentColor" style="width:15px;height:15px;flex-shrink:0;"><path d="M8 0a5 5 0 00-5 5c0 3.75 5 11 5 11s5-7.25 5-11a5 5 0 00-5-5zm0 7.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/></svg>Trips
+      </div>
+      <div class="ni" id="ni-crm" onclick="window.location.href='crm.html'"><svg viewBox="0 0 16 16" fill="currentColor" style="width:15px;height:15px;flex-shrink:0;"><path d="M11 6a3 3 0 11-6 0 3 3 0 016 0zm-9 8a5 5 0 0110 0H2z"/></svg>CRM
+      </div>
+      <div class="ni" id="ni-notes" onclick="showPage('notes',this)">
+        <svg viewBox="0 0 16 16" fill="currentColor" style="width:15px;height:15px;flex-shrink:0;"><path d="M2 2a1 1 0 011-1h10a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V2zm2 1v10h8V3H4zm1 2h6v1H5V5zm0 3h6v1H5V8zm0 3h4v1H5v-1z"/></svg>Notes
+      </div>
+      <div class="ni" id="ni-settings" onclick="showPage('settings',this)">
+        <svg viewBox="0 0 16 16" fill="currentColor" style="width:15px;height:15px;flex-shrink:0;"><path d="M7.5 10a2.5 2.5 0 100-5 2.5 2.5 0 000 5zm0-1a1.5 1.5 0 110-3 1.5 1.5 0 010 3z"/><path d="M7.5 0a1 1 0 01.94.66l.43 1.08c.35.1.68.24.99.4l1.08-.37a1 1 0 011.14.37l1 1.73a1 1 0 01-.18 1.24l-.84.76c.03.24.04.48.04.73s-.01.49-.04.73l.84.76a1 1 0 01.18 1.24l-1 1.73a1 1 0 01-1.14.37l-1.08-.37c-.31.16-.64.3-.99-.4l-.43 1.08A1 1 0 017.5 15a1 1 0 01-.94-.66l-.43-1.08a5 5 0 01-.99-.4l-1.08.37a1 1 0 01-1.14-.37l-1-1.73a1 1 0 01.18-1.24l.84-.76A5.16 5.16 0 013 8.5c0-.25.01-.49.04-.73l-.84-.76A1 1 0 012 6.77l1-1.73a1 1 0 011.14-.37l1.08.37c.31-.16.64-.3.99-.4L6.56.66A1 1 0 017.5 0z"/></svg>Settings
+      </div>
+    </nav>
+    <div class="sb-bot">
+      <div class="user-pill" onclick="showPage('settings',document.getElementById('ni-settings'))">
+        <div class="uav"><img id="user-avatar-img" src="" alt=""/><span id="user-avatar-txt">A</span></div>
+        <div><div class="uname" id="user-name">Adrian</div><div class="urole">Personal</div></div>
+      </div>
+    </div>
+  </aside>
+  <main class="main" id="main-area">
+    <div class="topbar">
+      <div class="topbar-left">
+        <button class="menu-btn" onclick="toggleSidebar()"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><rect y="3" width="18" height="1.5" rx=".75"/><rect y="8.25" width="18" height="1.5" rx=".75"/><rect y="13.5" width="18" height="1.5" rx=".75"/></svg></button>
+        <div class="pg-title">Health</div>
+      </div>
+      <div class="topbar-right">
+        <span id="sync-badge" style="font-family:'DM Mono',monospace;font-size:10px;opacity:0;transition:opacity .3s;color:var(--green);"></span>
+        <button class="btn btn-ghost btn-sm" onclick="openGoalsModal()">Goals</button>
+        <button class="btn btn-primary btn-sm" onclick="openLogModal()">+ Log Today</button>
+      </div>
+    </div>
+    <div class="content">
+      <!-- TABS -->
+      <div class="view-tabs">
+        <button class="vtab active" onclick="setView('today',this)">Today</button>
+        <button class="vtab" onclick="setView('week',this)">Week</button>
+        <button class="vtab" onclick="setView('month',this)">Month</button>
+        <button class="vtab" onclick="setView('trends',this)">Trends</button>
+      </div>
+
+      <!-- TODAY -->
+      <div id="view-today">
+        <!-- Summary hero -->
+        <div class="health-hero mb18">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div>
+              <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px;" id="hero-date"></div>
+              <div style="font-size:18px;font-weight:600;letter-spacing:-.02em;margin-bottom:14px;" id="hero-greeting">Good morning, Adrian</div>
+              <div style="display:flex;gap:24px;flex-wrap:wrap;">
+                <div><div style="font-size:20px;font-weight:700;" id="h-w">—</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Weight kg</div></div>
+                <div><div style="font-size:20px;font-weight:700;" id="h-c">—</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Calories</div></div>
+                <div><div style="font-size:20px;font-weight:700;" id="h-wa">—</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Water gl</div></div>
+                <div><div style="font-size:20px;font-weight:700;" id="h-sl">—</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Sleep hrs</div></div>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="h-score" id="daily-score">—</div>
+              <div class="h-score-lbl">daily score</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STREAKS -->
+        <div class="streak-bar" id="streak-bar"></div>
+
+        <!-- METRIC CARDS -->
+        <div class="metrics-grid">
+          <div class="hmc" onclick="openLogModal('weight')"><div class="hmc-icon">⚖️</div><div class="hmc-val" id="mc-weight" style="color:var(--blue);">—</div><div class="hmc-lbl">Weight</div><div class="hmc-goal" id="mc-wg"></div><div class="hmc-bar"><div class="hmc-fill" id="mc-wb" style="background:var(--blue);width:0%"></div></div></div>
+          <div class="hmc" onclick="openFoodModal()"><div class="hmc-icon">🔥</div><div class="hmc-val" id="mc-cal" style="color:var(--amber);">—</div><div class="hmc-lbl">Calories</div><div class="hmc-goal" id="mc-cg"></div><div class="hmc-bar"><div class="hmc-fill" id="mc-cb" style="background:var(--amber);width:0%"></div></div></div>
+          <div class="hmc" onclick="scrollToWater()"><div class="hmc-icon">💧</div><div class="hmc-val" id="mc-water" style="color:var(--blue);">—</div><div class="hmc-lbl">Water</div><div class="hmc-goal" id="mc-wag"></div><div class="hmc-bar"><div class="hmc-fill" id="mc-wab" style="background:var(--blue);width:0%"></div></div></div>
+          <div class="hmc" onclick="openLogModal('sleep')"><div class="hmc-icon">🌙</div><div class="hmc-val" id="mc-sleep" style="color:var(--purple);">—</div><div class="hmc-lbl">Sleep</div><div class="hmc-goal">Goal: <span id="mc-slg">8</span> hrs</div><div class="hmc-bar"><div class="hmc-fill" id="mc-slb" style="background:var(--purple);width:0%"></div></div></div>
+        </div>
+
+        <!-- WATER -->
+        <div class="panel mb18" id="water-panel">
+          <div class="ph"><div><div class="pt">Water</div><div class="ps2" id="water-sub">// tap to log</div></div><div style="font-size:18px;font-weight:700;color:var(--blue);font-family:'DM Mono',monospace;" id="water-big">0</div></div>
+          <div class="pb"><div style="display:flex;gap:6px;flex-wrap:wrap;" id="water-glasses"></div></div>
+        </div>
+
+        <!-- FOOD -->
+        <div class="panel mb18">
+          <div class="ph">
+            <div><div class="pt">Food Log</div><div class="ps2">// daily intake</div></div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:13px;font-weight:700;color:var(--amber);font-family:'DM Mono',monospace;" id="cal-total">0 kcal</span>
+              <button class="btn btn-primary btn-sm" onclick="openFoodModal()">+ Add</button>
+            </div>
+          </div>
+          <div id="food-list"><div class="empty">No food logged today</div></div>
+        </div>
+
+        <!-- EXERCISE -->
+        <div class="panel mb18">
+          <div class="ph"><div><div class="pt">Exercise</div><div class="ps2" id="ex-prog">// 0/0 done</div></div><button class="btn btn-ghost btn-sm" onclick="openExModal()">+ Add</button></div>
+          <div id="ex-list"><div class="empty">No exercises yet</div></div>
+        </div>
+
+        <!-- SLEEP -->
+        <div class="panel mb18">
+          <div class="ph"><div><div class="pt">Sleep</div><div class="ps2">// last night</div></div><button class="btn btn-ghost btn-sm" onclick="openLogModal('sleep')">Log</button></div>
+          <div class="pb">
+            <div class="sleep-bar-wrap"><div class="sleep-bar-fill" id="sleep-bar" style="left:40%;width:30%;"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;padding:0 2px;margin-bottom:12px;"><span>10pm</span><span>12am</span><span>2am</span><span>4am</span><span>6am</span><span>8am</span><span>10am</span></div>
+            <div style="display:flex;gap:20px;">
+              <div><div style="font-size:18px;font-weight:700;color:var(--purple);" id="sl-hrs">—</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">hours</div></div>
+              <div><div style="font-size:18px;font-weight:700;" id="sl-in">—</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">bedtime</div></div>
+              <div><div style="font-size:18px;font-weight:700;" id="sl-out">—</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">wake up</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WEEK -->
+      <div id="view-week" style="display:none;">
+        <div class="panel mb18"><div class="ph"><div><div class="pt">This Week</div><div class="ps2">// 7 day overview</div></div></div><div class="pb"><div id="week-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;"></div></div></div>
+        <div class="g2">
+          <div class="panel mb18"><div class="ph"><div><div class="pt">Calories</div><div class="ps2">// 7d</div></div></div><div class="pb"><div style="height:160px;"><canvas id="wCalChart"></canvas></div></div></div>
+          <div class="panel mb18"><div class="ph"><div><div class="pt">Sleep</div><div class="ps2">// hrs/night</div></div></div><div class="pb"><div style="height:160px;"><canvas id="wSlChart"></canvas></div></div></div>
+        </div>
+      </div>
+
+      <!-- MONTH -->
+      <div id="view-month" style="display:none;">
+        <div class="panel mb18">
+          <div class="ph">
+            <div><div class="pt">Calendar</div><div class="ps2" id="cal-month-lbl">// Apr 2026</div></div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <button class="mp-btn" onclick="shiftCal(-1)">&#8249;</button>
+              <button onclick="resetCal()" style="padding:3px 9px;border-radius:8px;border:1px solid var(--border2);background:transparent;color:var(--text2);font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;">Today</button>
+              <button class="mp-btn" onclick="shiftCal(1)">&#8250;</button>
+            </div>
+          </div>
+          <div class="pb">
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:6px;">
+              <div class="cal-dow">S</div><div class="cal-dow">M</div><div class="cal-dow">T</div><div class="cal-dow">W</div><div class="cal-dow">T</div><div class="cal-dow">F</div><div class="cal-dow">S</div>
+            </div>
+            <div class="health-cal-grid" id="health-cal"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRENDS -->
+      <div id="view-trends" style="display:none;">
+        <div class="g2">
+          <div class="panel mb18"><div class="ph"><div><div class="pt">Weight</div><div class="ps2">// 30d + goal</div></div></div><div class="pb"><div style="height:190px;"><canvas id="tWChart"></canvas></div></div></div>
+          <div class="panel mb18"><div class="ph"><div><div class="pt">Calories</div><div class="ps2">// vs goal</div></div></div><div class="pb"><div style="height:190px;"><canvas id="tCChart"></canvas></div></div></div>
+        </div>
+        <div class="g2">
+          <div class="panel mb18"><div class="ph"><div><div class="pt">Sleep</div><div class="ps2">// hrs/night</div></div></div><div class="pb"><div style="height:190px;"><canvas id="tSlChart"></canvas></div></div></div>
+          <div class="panel mb18"><div class="ph"><div><div class="pt">Water</div><div class="ps2">// glasses/day</div></div></div><div class="pb"><div style="height:190px;"><canvas id="tWaChart"></canvas></div></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<!-- LIQUID NAV -->
+<nav class="liquid-nav" id="liquid-nav">
+  <div class="lnav-item active" id="ln-dashboard" onclick="showPage('dashboard',document.getElementById('ni-dashboard'));lnavActive('ln-dashboard')">
+    <svg viewBox="0 0 16 16" fill="currentColor" width="20" height="20"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+    Home
+  </div>
+  <div class="lnav-item" id="ln-accounts" onclick="showPage('accounts',document.getElementById('ni-accounts'));lnavActive('ln-accounts')">
+    <svg viewBox="0 0 16 16" fill="currentColor" width="20" height="20"><path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v1H2V4zm0 3h12v5a2 2 0 01-2 2H4a2 2 0 01-2-2V7zm3 2a1 1 0 000 2h1a1 1 0 000-2H5z"/></svg>
+    Accounts
+  </div>
+
+
+  <div class="lnav-item" id="ln-health" onclick="window.location.href='health.html'">
+    <svg viewBox="0 0 16 16" fill="currentColor" width="20" height="20"><path d="M8 1.5C5 1.5 2.5 4 2.5 7c0 4 5.5 7.5 5.5 7.5S13.5 11 13.5 7c0-3-2.5-5.5-5.5-5.5zm0 7.5a2 2 0 110-4 2 2 0 010 4z"/></svg>
+    Health
+  </div>
+  <div class="lnav-item" id="ln-trips" onclick="window.location.href='trips.html'">
+    <svg viewBox="0 0 16 16" fill="currentColor" width="20" height="20"><path d="M8 0a5 5 0 00-5 5c0 3.75 5 11 5 11s5-7.25 5-11a5 5 0 00-5-5zm0 7.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/></svg>
+    Trips
+  </div>
+  <div class="lnav-item" id="ln-notes" onclick="showPage('notes',document.getElementById('ni-notes'));lnavActive('ln-notes')">
+    <svg viewBox="0 0 16 16" fill="currentColor" width="20" height="20"><path d="M2 2a1 1 0 011-1h10a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V2zm2 1v10h8V3H4zm1 2h6v1H5V5zm0 3h6v1H5V8zm0 3h4v1H5v-1z"/></svg>
+    Notes
+  </div>
+</nav>
+
+<!-- MODALS -->
+<div class="mo" id="mo-log"><div class="mbox">
+  <div class="mt" id="log-title">Log Health</div>
+  <div class="fg"><label class="fl">Date</label><input class="fi" id="log-date" type="date"/></div>
+  <div class="fr"><div class="fg"><label class="fl">Weight (kg)</label><input class="fi" id="log-weight" type="number" step="0.1" placeholder="75.0"/></div><div class="fg"><label class="fl">Mood</label><div style="display:flex;gap:8px;margin-top:4px;" id="mood-sel"></div><input type="hidden" id="log-mood" value="0"/></div></div>
+  <div class="fr"><div class="fg"><label class="fl">Bedtime</label><input class="fi" id="log-sin" type="time"/></div><div class="fg"><label class="fl">Wake up</label><input class="fi" id="log-sout" type="time"/></div></div>
+  <div class="fg"><label class="fl">Notes</label><input class="fi" id="log-notes" placeholder="How do you feel?"/></div>
+  <div class="ma"><button class="btn btn-ghost" onclick="closeM('mo-log')">Cancel</button><button class="btn btn-primary" onclick="saveLog()">Save</button></div>
+</div></div>
+
+<div class="mo" id="mo-food"><div class="mbox">
+  <div class="mt">Add Food</div>
+  <div class="fg"><label class="fl">Library</label><div style="display:flex;gap:5px;flex-wrap:wrap;" id="food-lib"></div></div>
+  <div class="fg"><label class="fl">Name</label><input class="fi" id="food-name" placeholder="e.g. Arroz con pollo..." oninput="filterLib(this.value)"/></div>
+  <div class="fr"><div class="fg"><label class="fl">Calories (kcal)</label><input class="fi" id="food-kcal" type="number" placeholder="400"/></div><div class="fg"><label class="fl">Emoji</label><input class="fi" id="food-emoji" placeholder="🍗" maxlength="4" style="font-size:20px;"/></div></div>
+  <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer;margin-bottom:14px;"><input type="checkbox" id="save-lib"/> Save to library</label>
+  <div class="ma"><button class="btn btn-ghost" onclick="closeM('mo-food')">Cancel</button><button class="btn btn-primary" onclick="saveFood()">Add</button></div>
+</div></div>
+
+<div class="mo" id="mo-ex"><div class="mbox">
+  <div class="mt">Add Exercise</div>
+  <div class="fg"><label class="fl">Exercise</label><input class="fi" id="ex-name" placeholder="Bench press, Pull-ups..."/></div>
+  <div class="fr"><div class="fg"><label class="fl">Sets</label><input class="fi" id="ex-sets" type="number" placeholder="3" value="3"/></div><div class="fg"><label class="fl">Reps</label><input class="fi" id="ex-reps" type="number" placeholder="10" value="10"/></div></div>
+  <div class="fg"><label class="fl">Weight kg (optional)</label><input class="fi" id="ex-kg" type="number" step="0.5" placeholder="60"/></div>
+  <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer;margin-bottom:14px;"><input type="checkbox" id="save-ex"/> Save as template</label>
+  <div class="ma"><button class="btn btn-ghost" onclick="closeM('mo-ex')">Cancel</button><button class="btn btn-primary" onclick="saveEx()">Add</button></div>
+</div></div>
+
+<div class="mo" id="mo-goals"><div class="mbox">
+  <div class="mt">Health Goals</div>
+  <div class="fr"><div class="fg"><label class="fl">Weight Goal (kg)</label><input class="fi" id="g-weight" type="number" step="0.1" placeholder="75"/></div><div class="fg"><label class="fl">Daily Calories</label><input class="fi" id="g-cal" type="number" placeholder="2000"/></div></div>
+  <div class="fr"><div class="fg"><label class="fl">Water (glasses)</label><input class="fi" id="g-water" type="number" placeholder="8"/></div><div class="fg"><label class="fl">Sleep (hrs)</label><input class="fi" id="g-sleep" type="number" step="0.5" placeholder="8"/></div></div>
+  <div class="ma"><button class="btn btn-ghost" onclick="closeM('mo-goals')">Cancel</button><button class="btn btn-primary" onclick="saveGoals()">Save</button></div>
+</div></div>
+
+<script>
+const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MOODS=['😔','😐','🙂','😊','🤩'];
+let charts={},confirmResolve=null;
+let state={health:[],foodLib:[],exerciseLib:[],goals:{weight:75,cal:2000,water:8,sleep:8},calMonth:new Date().getMonth(),calYear:new Date().getFullYear(),theme:'light',view:'today'};
+function N(){return new Date();}
+function todayStr(){return N().toISOString().split('T')[0];}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function getDay(ds){return state.health.find(h=>h.date===ds)||null;}
+function getTodayLog(){return getDay(todayStr());}
+function save(){if(typeof window._fbSave==='function')window._fbSave({health:state.health,goals:state.goals,foodLib:state.foodLib,exerciseLib:state.exerciseLib});}
+function showBadge(){const b=document.getElementById('sync-badge');if(b){b.textContent='✓ synced';b.style.opacity='1';setTimeout(()=>b.style.opacity='0',2000);}}
+function applyTheme(t){document.documentElement.setAttribute('data-theme',t);state.theme=t;Object.values(charts).forEach(ch=>{try{ch.update();}catch(e){}});}
+function syncThemeBtn(t){const d=document.getElementById('th-dark'),l=document.getElementById('th-light');if(d)d.classList.toggle('active',t==='dark');if(l)l.classList.toggle('active',t==='light');}
+function showToast(msg,type='info'){const c=document.getElementById('toast-container');if(!c)return;const el=document.createElement('div');el.className='toast '+type;el.innerHTML='<span style="flex:1;">'+esc(msg)+'</span><button style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;" onclick="this.parentElement.remove()">×</button>';c.appendChild(el);setTimeout(()=>el.remove(),3500);}
+function showConfirm(title,msg){return new Promise(resolve=>{document.getElementById('confirm-title').textContent=title;document.getElementById('confirm-msg').textContent=msg;document.getElementById('confirm-overlay').classList.add('open');confirmResolve=v=>{document.getElementById('confirm-overlay').classList.remove('open');resolve(v);};}); }
+function set(id,v){const el=document.getElementById(id);if(el)el.textContent=v;}
+function calcScore(log){
+  if(!log)return 0;let s=0;
+  if(log.weight)s+=15;
+  const cal=log.foods?log.foods.reduce((a,f)=>a+(f.kcal||0),0):0;
+  const cp=cal/state.goals.cal;if(cp>0.5&&cp<1.2)s+=25;else if(cp>0)s+=10;
+  s+=Math.round(Math.min((log.water||0)/state.goals.water,1)*25);
+  const sh=log.sleepIn&&log.sleepOut?sleepHrs(log.sleepIn,log.sleepOut):0;
+  if(sh>=state.goals.sleep)s+=25;else if(sh>5)s+=Math.round((sh/state.goals.sleep)*25);
+  const exd=(log.exercises||[]).filter(e=>e.done).length,ext=(log.exercises||[]).length;
+  if(ext>0)s+=Math.round((exd/ext)*10);
+  return Math.min(100,s);
+}
+function sleepHrs(inT,outT){if(!inT||!outT)return 0;const[ih,im]=inT.split(':').map(Number);const[oh,om]=outT.split(':').map(Number);let d=(oh*60+om)-(ih*60+im);if(d<0)d+=1440;return parseFloat((d/60).toFixed(1));}
+function initApp(){
+  const n=N();const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const dow=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  set('hero-date',dow[n.getDay()]+', '+months[n.getMonth()]+' '+n.getDate()+' '+n.getFullYear());
+  const h=n.getHours();set('hero-greeting',(h<12?'Good morning':h<17?'Good afternoon':'Good evening')+', Adrian');
+  set('mc-slg',state.goals.sleep);applyTheme(state.theme);renderAll();
+}
+function renderAll(){renderHero();renderStreaks();renderMetrics();renderWater();renderFoodLog();renderExercise();renderSleep();if(state.view==='month')renderCalendar();if(state.view==='week')renderWeek();if(state.view==='trends')renderTrends();}
+function renderHero(){
+  const log=getTodayLog();set('daily-score',log?calcScore(log):'—');
+  set('h-w',log&&log.weight?log.weight+'kg':'—');
+  const cal=log&&log.foods?log.foods.reduce((a,f)=>a+(f.kcal||0),0):0;set('h-c',log?cal||0:'—');
+  set('h-wa',log?(log.water||0):0);
+  const sh=log&&log.sleepIn&&log.sleepOut?sleepHrs(log.sleepIn,log.sleepOut):0;set('h-sl',sh?sh+'h':'—');
+}
+function renderStreaks(){
+  const bar=document.getElementById('streak-bar');if(!bar)return;
+  const today=new Date();let ls=0,ws=0;
+  for(let i=0;i<365;i++){const d=new Date(today);d.setDate(d.getDate()-i);if(getDay(d.toISOString().split('T')[0]))ls++;else break;}
+  for(let i=0;i<365;i++){const d=new Date(today);d.setDate(d.getDate()-i);const l=getDay(d.toISOString().split('T')[0]);if(l&&l.weight)ws++;else break;}
+  const perf=state.health.filter(h=>calcScore(h)>=80).length;
+  bar.innerHTML='';
+  [{icon:'🔥',val:ls,lbl:'day streak'},{icon:'⚖️',val:ws,lbl:'weight streak'},{icon:'⭐',val:perf,lbl:'perfect days'},{icon:'📅',val:state.health.length,lbl:'days logged'}].forEach(s=>{
+    const d=document.createElement('div');d.className='streak-card';
+    d.innerHTML='<div class="streak-icon">'+s.icon+'</div><div><div class="streak-val">'+s.val+'</div><div class="streak-lbl">'+s.lbl+'</div></div>';
+    bar.appendChild(d);
+  });
+}
+function renderMetrics(){
+  const log=getTodayLog();
+  const w=log&&log.weight?log.weight:null;set('mc-weight',w?w+'kg':'—');set('mc-wg','Goal: '+state.goals.weight+' kg');
+  const wb=document.getElementById('mc-wb');if(wb&&w)wb.style.width=Math.min(100,Math.max(0,100-(Math.abs(w-state.goals.weight)/state.goals.weight*100)))+'%';
+  const cal=log&&log.foods?log.foods.reduce((a,f)=>a+(f.kcal||0),0):0;set('mc-cal',cal||'—');set('mc-cg','Goal: '+state.goals.cal+' kcal');
+  const cb=document.getElementById('mc-cb');if(cb)cb.style.width=Math.min(100,(cal/state.goals.cal)*100)+'%';
+  const wa=log?log.water||0:0;set('mc-water',wa||'—');set('mc-wag','Goal: '+state.goals.water+' glasses');
+  const wab=document.getElementById('mc-wab');if(wab)wab.style.width=Math.min(100,(wa/state.goals.water)*100)+'%';
+  const sh=log&&log.sleepIn&&log.sleepOut?sleepHrs(log.sleepIn,log.sleepOut):0;set('mc-sleep',sh?sh+'h':'—');
+  const slb=document.getElementById('mc-slb');if(slb)slb.style.width=Math.min(100,(sh/state.goals.sleep)*100)+'%';
+}
+function renderWater(){
+  const log=getTodayLog();const cur=log?log.water||0:0;const goal=state.goals.water||8;
+  const cont=document.getElementById('water-glasses');if(!cont)return;
+  const total=Math.max(goal,cur);cont.innerHTML='';
+  for(let i=0;i<total;i++){
+    const g=document.createElement('div');g.className='wglass'+(i<cur?' filled':'');
+    g.textContent=i<cur?'💧':'○';g.onclick=(()=>{const n=i+1;return()=>setWater(n);})();
+    cont.appendChild(g);
+  }
+  set('water-sub',cur+' / '+goal+' glasses');set('water-big',cur);
+}
+function setWater(n){const ds=todayStr();let log=getDay(ds);if(!log){log={date:ds,water:0,foods:[],exercises:[]};state.health.push(log);}log.water=n;save();renderWater();renderMetrics();renderHero();showToast('💧 Water updated','success');}
+function scrollToWater(){document.getElementById('water-panel')?.scrollIntoView({behavior:'smooth',block:'center'});}
+function renderFoodLog(){
+  const log=getTodayLog();const foods=log&&log.foods?log.foods:[];
+  const total=foods.reduce((a,f)=>a+(f.kcal||0),0);
+  set('cal-total',total+' / '+state.goals.cal+' kcal');
+  const list=document.getElementById('food-list');if(!list)return;
+  list.innerHTML='';
+  if(!foods.length){list.innerHTML='<div class="empty">No food logged today</div>';return;}
+  foods.forEach((f,i)=>{
+    const row=document.createElement('div');row.className='food-item';
+    const em=document.createElement('span');em.style.cssText='font-size:20px;width:32px;text-align:center;';em.textContent=f.emoji||'🍽️';
+    const info=document.createElement('div');info.style.flex='1';
+    const name=document.createElement('div');name.style.cssText='font-size:13px;font-weight:500;';name.textContent=f.name;
+    const time=document.createElement('div');time.className='td2';time.textContent=f.time||'';
+    info.appendChild(name);info.appendChild(time);
+    const kcal=document.createElement('span');kcal.style.cssText='font-size:12px;font-weight:600;color:var(--amber);';kcal.textContent=f.kcal+' kcal';
+    const del=document.createElement('button');del.textContent='×';del.style.cssText='background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0 4px;margin-left:4px;';
+    del.onclick=(()=>{const idx=i;return()=>removeFood(idx);})();
+    row.appendChild(em);row.appendChild(info);row.appendChild(kcal);row.appendChild(del);
+    list.appendChild(row);
+  });
+}
+function removeFood(i){const log=getTodayLog();if(log&&log.foods){log.foods.splice(i,1);save();renderFoodLog();renderMetrics();renderHero();}}
+function renderExercise(){
+  const log=getTodayLog();const exs=log&&log.exercises?log.exercises:[];
+  const done=exs.filter(e=>e.done).length;set('ex-prog','// '+done+'/'+exs.length+' done');
+  const list=document.getElementById('ex-list');if(!list)return;
+  list.innerHTML='';
+  if(!exs.length){list.innerHTML='<div class="empty">No exercises yet</div>';return;}
+  exs.forEach((e,i)=>{
+    const row=document.createElement('div');row.className='ex-row';
+    const chk=document.createElement('div');chk.className='ex-check'+(e.done?' done':'');chk.textContent=e.done?'✓':'';chk.onclick=(()=>{const idx=i;return()=>toggleEx(idx);})();
+    const info=document.createElement('div');info.style.flex='1';
+    const nm=document.createElement('div');nm.style.cssText='font-size:13px;font-weight:500;'+(e.done?'text-decoration:line-through;color:var(--text3);':'');nm.textContent=e.name;
+    const meta=document.createElement('div');meta.className='td2';meta.textContent=e.sets+'×'+e.reps+(e.kg?' · '+e.kg+'kg':'');
+    info.appendChild(nm);info.appendChild(meta);
+    const del=document.createElement('button');del.textContent='×';del.style.cssText='background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;';del.onclick=(()=>{const idx=i;return()=>removeEx(idx);})();
+    row.appendChild(chk);row.appendChild(info);row.appendChild(del);
+    list.appendChild(row);
+  });
+}
+function toggleEx(i){const log=getTodayLog();if(log&&log.exercises&&log.exercises[i]){log.exercises[i].done=!log.exercises[i].done;save();renderExercise();}}
+function removeEx(i){const log=getTodayLog();if(log&&log.exercises){log.exercises.splice(i,1);save();renderExercise();}}
+function renderSleep(){
+  const log=getTodayLog();const inT=log&&log.sleepIn?log.sleepIn:null;const outT=log&&log.sleepOut?log.sleepOut:null;
+  const hrs=inT&&outT?sleepHrs(inT,outT):0;
+  set('sl-hrs',hrs?hrs+'h':'—');set('sl-in',inT||'—');set('sl-out',outT||'—');
+  const bar=document.getElementById('sleep-bar');
+  if(bar&&inT&&outT){
+    const tm=t=>{const[h,m]=t.split(':').map(Number);return h*60+m;};
+    const base=22*60,range=12*60;let im=tm(inT),om=tm(outT);
+    if(im<base-120)im+=1440;if(om<im)om+=1440;
+    const left=Math.max(0,Math.min(100,((im-base)/range)*100));
+    const width=Math.max(0,Math.min(100-left,((om-im)/range)*100));
+    bar.style.left=left+'%';bar.style.width=width+'%';
+  }else if(bar){bar.style.width='0%';}
+}
+function renderCalendar(){
+  const cal=document.getElementById('health-cal');if(!cal)return;
+  const m=state.calMonth,y=state.calYear,n=N();
+  const lbl=document.getElementById('cal-month-lbl');if(lbl)lbl.textContent='// '+MO[m]+' '+y;
+  const first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();
+  const isNow=m===n.getMonth()&&y===n.getFullYear();
+  cal.innerHTML='';
+  for(let i=0;i<first;i++){const d=document.createElement('div');d.className='hday';d.style.opacity='.2';cal.appendChild(d);}
+  for(let d=1;d<=days;d++){
+    const ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const log=getDay(ds);const score=calcScore(log);const isToday=isNow&&d===n.getDate();
+    const cell=document.createElement('div');
+    cell.className='hday'+(isToday?' today':'')+(score>=80?' full-log':score>0?' logged':'');
+    cell.innerHTML='<div class="hday-num">'+d+'</div><div style="display:flex;justify-content:center;gap:2px;margin-top:2px;">'
+      +(log&&log.weight?'<div class="hdot" style="background:var(--blue);"></div>':'')
+      +(log&&log.foods&&log.foods.length?'<div class="hdot" style="background:var(--amber);"></div>':'')
+      +(log&&(log.water||0)>0?'<div class="hdot" style="background:var(--teal||#00a0a8);"></div>':'')
+      +(log&&log.sleepIn?'<div class="hdot" style="background:var(--purple);"></div>':'')
+      +'</div>';
+    cell.onclick=(()=>{const date=ds;return()=>openLogModal(null,date);})();
+    cal.appendChild(cell);
+  }
+}
+function shiftCal(d){state.calMonth+=d;if(state.calMonth>11){state.calMonth=0;state.calYear++;}if(state.calMonth<0){state.calMonth=11;state.calYear--;}renderCalendar();}
+function resetCal(){state.calMonth=N().getMonth();state.calYear=N().getFullYear();renderCalendar();}
+function renderWeek(){
+  const n=N();const days=Array.from({length:7},(_,i)=>{const d=new Date(n);d.setDate(d.getDate()-(6-i));return d;});
+  const wg=document.getElementById('week-grid');
+  if(wg){
+    wg.innerHTML='';
+    days.forEach(d=>{
+      const ds=d.toISOString().split('T')[0];const log=getDay(ds);const score=calcScore(log);const isT=ds===todayStr();
+      const cell=document.createElement('div');
+      cell.style.cssText='background:var(--bg2);border-radius:10px;padding:10px 6px;text-align:center;border:1px solid '+(isT?'var(--green)':'var(--border)')+';cursor:pointer;';
+      cell.innerHTML='<div style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">'+DAYS[d.getDay()]+'</div>'
+        +'<div style="font-size:16px;font-weight:700;margin:3px 0;'+(isT?'color:var(--green);':'')+'">'+d.getDate()+'</div>'
+        +'<div style="font-size:18px;">'+(score>=80?'⭐':score>0?'✅':'·')+'</div>'
+        +(log?'<div style="font-size:10px;color:var(--text3);">'+score+'pts</div>':'');
+      cell.onclick=(()=>{const date=ds;return()=>{openLogModal(null,date);setView('today',null);}})();
+      wg.appendChild(cell);
+    });
+  }
+  const labels=days.map(d=>DAYS[d.getDay()]);
+  const calD=days.map(d=>{const l=getDay(d.toISOString().split('T')[0]);return l&&l.foods?l.foods.reduce((a,f)=>a+(f.kcal||0),0):0;});
+  const slD=days.map(d=>{const l=getDay(d.toISOString().split('T')[0]);return l&&l.sleepIn&&l.sleepOut?sleepHrs(l.sleepIn,l.sleepOut):0;});
+  mkBar('wCalChart',labels,calD);mkLine('wSlChart',labels,slD,'var(--purple)');
+}
+function renderTrends(){
+  const n=N();const pts=Array.from({length:30},(_,i)=>{const d=new Date(n);d.setDate(d.getDate()-(29-i));return d;});
+  const lbs=pts.map(d=>(d.getDate()===1||d.getDate()%7===0)?MO[d.getMonth()]+' '+d.getDate():'');
+  const wD=pts.map(d=>{const l=getDay(d.toISOString().split('T')[0]);return l&&l.weight?l.weight:null;});
+  const cD=pts.map(d=>{const l=getDay(d.toISOString().split('T')[0]);return l&&l.foods?l.foods.reduce((a,f)=>a+(f.kcal||0),0):null;});
+  const slD=pts.map(d=>{const l=getDay(d.toISOString().split('T')[0]);return l&&l.sleepIn&&l.sleepOut?sleepHrs(l.sleepIn,l.sleepOut):null;});
+  const waD=pts.map(d=>{const l=getDay(d.toISOString().split('T')[0]);return l?l.water||0:null;});
+  mkLineGoal('tWChart',lbs,wD,'var(--blue)',state.goals.weight);
+  mkLineGoal('tCChart',lbs,cD,'var(--amber)',state.goals.cal);
+  mkLine('tSlChart',lbs,slD,'var(--purple)');mkBar('tWaChart',lbs,waD);
+}
+const tipCfg={backgroundColor:'rgba(15,18,24,0.92)',borderColor:'rgba(255,255,255,0.08)',borderWidth:1,titleColor:'#f2f4f7',bodyColor:'#8492a6',padding:10,cornerRadius:8,displayColors:false};
+function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+function mkLine(id,labels,data,color){
+  dc(id);const ctx=document.getElementById(id);if(!ctx)return;
+  charts[id]=new Chart(ctx,{type:'line',data:{labels,datasets:[{data,borderColor:color||'var(--green)',backgroundColor:'transparent',borderWidth:2,pointRadius:2,tension:0.4,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tipCfg}},scales:{x:{grid:{display:false},ticks:{font:{size:10},color:'#9aaab8'}},y:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{font:{size:10},color:'#9aaab8'}}}}});
+}
+function mkLineGoal(id,labels,data,color,goal){
+  dc(id);const ctx=document.getElementById(id);if(!ctx)return;
+  charts[id]=new Chart(ctx,{type:'line',data:{labels,datasets:[{data,borderColor:color,backgroundColor:'transparent',borderWidth:2,pointRadius:data.map(v=>v?2:0),tension:0.4,spanGaps:true},{data:labels.map(()=>goal),borderColor:color,borderDash:[4,4],borderWidth:1,pointRadius:0,fill:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tipCfg}},scales:{x:{grid:{display:false},ticks:{font:{size:10},color:'#9aaab8'}},y:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{font:{size:10},color:'#9aaab8'}}}}});
+}
+function mkBar(id,labels,data,color){
+  dc(id);const ctx=document.getElementById(id);if(!ctx)return;
+  charts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:color||'rgba(0,143,106,0.6)',borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tipCfg}},scales:{x:{grid:{display:false},ticks:{font:{size:10},color:'#9aaab8'}},y:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{font:{size:10},color:'#9aaab8'}}}}});
+}
+function setView(v,el){state.view=v;['today','week','month','trends'].forEach(n=>{const e=document.getElementById('view-'+n);if(e)e.style.display=n===v?'block':'none';});document.querySelectorAll('.vtab').forEach(t=>t.classList.remove('active'));if(el)el.classList.add('active');if(v==='week')renderWeek();if(v==='trends')renderTrends();if(v==='month')renderCalendar();}
+function openM(id){document.getElementById(id).classList.add('open');}
+function closeM(id){document.getElementById(id).classList.remove('open');}
+document.querySelectorAll('.mo').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');}));
+function openLogModal(focus,ds){
+  const d=ds||todayStr();const log=getDay(d)||{};
+  document.getElementById('log-date').value=d;document.getElementById('log-weight').value=log.weight||'';document.getElementById('log-sin').value=log.sleepIn||'';document.getElementById('log-sout').value=log.sleepOut||'';document.getElementById('log-notes').value=log.notes||'';document.getElementById('log-title').textContent='Log — '+d;
+  const mv=log.mood||0;document.getElementById('log-mood').value=mv;
+  const ms=document.getElementById('mood-sel');ms.innerHTML='';
+  MOODS.forEach((m,i)=>{const s=document.createElement('span');s.textContent=m;s.style.cssText='font-size:22px;cursor:pointer;opacity:'+(mv===i+1?1:0.3)+';transition:all .2s;';s.onclick=(()=>{const n=i+1;return()=>setMood(n);})();ms.appendChild(s);});
+  openM('mo-log');if(focus)setTimeout(()=>document.getElementById('log-'+focus)?.focus(),200);
+}
+function setMood(n){
+  document.getElementById('log-mood').value=n;
+  const ms=document.getElementById('mood-sel');ms.innerHTML='';
+  MOODS.forEach((m,i)=>{const s=document.createElement('span');s.textContent=m;s.style.cssText='font-size:22px;cursor:pointer;opacity:'+(n===i+1?1:0.3)+';transition:all .2s;';s.onclick=(()=>{const nn=i+1;return()=>setMood(nn);})();ms.appendChild(s);});
+}
+function saveLog(){
+  const ds=document.getElementById('log-date').value;if(!ds){showToast('Pick a date','info');return;}
+  let log=getDay(ds);if(!log){log={date:ds,foods:[],exercises:[],water:0};state.health.push(log);}
+  const w=parseFloat(document.getElementById('log-weight').value);if(w)log.weight=w;
+  log.sleepIn=document.getElementById('log-sin').value||null;log.sleepOut=document.getElementById('log-sout').value||null;log.notes=document.getElementById('log-notes').value.trim();log.mood=parseInt(document.getElementById('log-mood').value)||0;
+  closeM('mo-log');save();renderAll();showToast('Logged! 💪','success');
+}
+function openFoodModal(){document.getElementById('food-name').value='';document.getElementById('food-kcal').value='';document.getElementById('food-emoji').value='🍽️';document.getElementById('save-lib').checked=false;renderFoodLib('');openM('mo-food');setTimeout(()=>document.getElementById('food-name').focus(),200);}
+function renderFoodLib(filter){
+  const el=document.getElementById('food-lib');if(!el)return;
+  let items=filter?state.foodLib.filter(f=>f.name.toLowerCase().includes(filter.toLowerCase())):state.foodLib;
+  el.innerHTML='';
+  if(!items.length){el.innerHTML='<span style="font-size:11px;color:var(--text3);">Library empty</span>';return;}
+  items.slice(0,6).forEach(f=>{
+    const btn=document.createElement('button');btn.className='btn btn-ghost btn-xs';
+    btn.innerHTML=(f.emoji||'🍽️')+' '+esc(f.name)+' <span style="color:var(--amber);font-weight:700;">'+f.kcal+'</span>';
+    btn.onclick=(()=>{const food=f;return()=>{addFood({...food,time:new Date().toTimeString().slice(0,5)});closeM('mo-food');}})();
+    el.appendChild(btn);
+  });
+}
+function filterLib(v){renderFoodLib(v);}
+function saveFood(){const name=document.getElementById('food-name').value.trim();const kcal=parseInt(document.getElementById('food-kcal').value)||0;const emoji=document.getElementById('food-emoji').value.trim()||'🍽️';if(!name||!kcal){showToast('Name + calories required','info');return;}if(document.getElementById('save-lib').checked&&!state.foodLib.find(f=>f.name.toLowerCase()===name.toLowerCase())){state.foodLib.push({name,kcal,emoji});}addFood({name,kcal,emoji,time:new Date().toTimeString().slice(0,5)});closeM('mo-food');}
+function addFood(food){const ds=todayStr();let log=getDay(ds);if(!log){log={date:ds,foods:[],exercises:[],water:0};state.health.push(log);}if(!log.foods)log.foods=[];log.foods.push(food);save();renderAll();showToast(food.emoji+' '+food.name+' added!','success');}
+function openExModal(){document.getElementById('ex-name').value='';document.getElementById('ex-sets').value='3';document.getElementById('ex-reps').value='10';document.getElementById('ex-kg').value='';document.getElementById('save-ex').checked=false;openM('mo-ex');setTimeout(()=>document.getElementById('ex-name').focus(),200);}
+function saveEx(){const name=document.getElementById('ex-name').value.trim();const sets=parseInt(document.getElementById('ex-sets').value)||3;const reps=parseInt(document.getElementById('ex-reps').value)||10;const kg=parseFloat(document.getElementById('ex-kg').value)||null;if(!name){showToast('Exercise name required','info');return;}const ds=todayStr();let log=getDay(ds);if(!log){log={date:ds,foods:[],exercises:[],water:0};state.health.push(log);}if(!log.exercises)log.exercises=[];log.exercises.push({name,sets,reps,kg,done:false});if(document.getElementById('save-ex').checked&&!state.exerciseLib.find(e=>e.name.toLowerCase()===name.toLowerCase())){state.exerciseLib.push({name,sets,reps});}closeM('mo-ex');save();renderAll();showToast('💪 '+name+' added!','success');}
+function openGoalsModal(){document.getElementById('g-weight').value=state.goals.weight||75;document.getElementById('g-cal').value=state.goals.cal||2000;document.getElementById('g-water').value=state.goals.water||8;document.getElementById('g-sleep').value=state.goals.sleep||8;openM('mo-goals');}
+function saveGoals(){state.goals={weight:parseFloat(document.getElementById('g-weight').value)||75,cal:parseInt(document.getElementById('g-cal').value)||2000,water:parseInt(document.getElementById('g-water').value)||8,sleep:parseFloat(document.getElementById('g-sleep').value)||8};closeM('mo-goals');save();renderAll();showToast('Goals saved','success');}
+function toggleSidebar(){const sb=document.getElementById('sidebar'),ov=document.getElementById('sb-overlay');sb.classList.toggle('open',!sb.classList.contains('open'));ov.classList.toggle('show',!sb.classList.contains('open'));}
+function closeSidebar(){document.getElementById('sidebar')?.classList.remove('open');document.getElementById('sb-overlay')?.classList.remove('show');}
+function lnavActive(id){document.querySelectorAll('.lnav-item').forEach(el=>el.classList.remove('active'));document.getElementById(id)?.classList.add('active');}
+</script></body>
+</html>
