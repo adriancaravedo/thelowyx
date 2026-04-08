@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import Sheet from "@/components/ui/Sheet";
-import { useApp } from "@/store/AppContext";
+import { useAuth } from "@/store/AuthContext";
 
 interface SettingsSheetProps {
   open: boolean;
@@ -10,14 +10,22 @@ interface SettingsSheetProps {
 }
 
 export default function SettingsSheet({ open, onClose }: SettingsSheetProps) {
-  const { profile, updateProfile } = useApp();
-  const [name, setName] = useState(profile.name);
-  const [username, setUsername] = useState(profile.username);
-  const [email, setEmail] = useState(profile.email);
+  const { profile, saveProfile } = useAuth();
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [editing, setEditing] = useState(false);
 
-  const handleSave = () => {
-    updateProfile({ name, username, email });
+  useEffect(() => {
+    if (profile) {
+      setName(profile.name);
+      setUsername(profile.username);
+      setEmail(profile.email);
+    }
+  }, [profile]);
+
+  const handleSave = async () => {
+    await saveProfile({ name, username, email });
     setEditing(false);
   };
 
@@ -37,26 +45,23 @@ export default function SettingsSheet({ open, onClose }: SettingsSheetProps) {
       </div>
 
       <div className="mt-6 space-y-5">
+        {[
+          { label: "Name", value: name, set: setName },
+          { label: "Username", value: username, set: setUsername },
+          { label: "Email", value: email, set: setEmail },
+        ].map(({ label, value, set }) => (
+          <div key={label}>
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">{label}</div>
+            {editing
+              ? <input value={value} onChange={e => set(e.target.value)}
+                  className="w-full border-b border-gray-200 py-1 text-gray-900 text-sm focus:outline-none focus:border-blue-500" />
+              : <div className="text-gray-900 text-sm">{value}</div>
+            }
+          </div>
+        ))}
         <div>
-          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Name</div>
-          {editing
-            ? <input value={name} onChange={e => setName(e.target.value)} className="w-full border-b border-gray-200 py-1 text-gray-900 text-sm focus:outline-none focus:border-blue-500" />
-            : <div className="text-gray-900 text-sm">{profile.name}</div>
-          }
-        </div>
-        <div>
-          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Username</div>
-          {editing
-            ? <input value={username} onChange={e => setUsername(e.target.value)} className="w-full border-b border-gray-200 py-1 text-gray-900 text-sm focus:outline-none focus:border-blue-500" />
-            : <div className="text-gray-900 text-sm">{profile.username}</div>
-          }
-        </div>
-        <div>
-          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Email</div>
-          {editing
-            ? <input value={email} onChange={e => setEmail(e.target.value)} className="w-full border-b border-gray-200 py-1 text-gray-900 text-sm focus:outline-none focus:border-blue-500" />
-            : <div className="text-gray-900 text-sm">{profile.email}</div>
-          }
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Currency</div>
+          <div className="text-gray-900 text-sm">{profile?.currency === "USD" ? "USD $" : "PEN S/."}</div>
         </div>
       </div>
 
