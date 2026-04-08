@@ -11,6 +11,7 @@ interface AccountSheetProps {
   onClose: () => void;
   editAccount?: Account | null;
   defaultType?: TabType;
+  onAddHolding?: () => void;
 }
 
 const TABS: TabType[] = ["Debit Card", "Credit Card", "Investments", "Real State", "Loans", "Others"];
@@ -20,7 +21,7 @@ const TAB_TO_TYPE: Record<TabType, AccountType> = {
   "Real State": "real_estate", "Loans": "loan", "Others": "other",
 };
 
-export default function AccountSheet({ open, onClose, editAccount, defaultType }: AccountSheetProps) {
+export default function AccountSheet({ open, onClose, editAccount, defaultType, onAddHolding }: AccountSheetProps) {
   const { addAccount, updateAccount } = useApp();
   const [tab, setTab] = useState<TabType>(defaultType || "Debit Card");
   const [name, setName] = useState("");
@@ -151,9 +152,16 @@ export default function AccountSheet({ open, onClose, editAccount, defaultType }
       </div>
 
       <button onClick={handleSubmit} disabled={!name || !balance}
-        className="w-full py-3.5 bg-gray-100 rounded-2xl text-gray-800 font-semibold text-sm disabled:opacity-40">
+        className="w-full py-3.5 bg-gray-100 rounded-2xl text-gray-800 font-semibold text-sm disabled:opacity-40 mb-2">
         {editAccount ? "Save" : "Add account"}
       </button>
+
+      {tab === "Investments" && !editAccount && (
+        <button onClick={() => { onClose(); setTimeout(() => onAddHolding?.(), 200); }}
+          className="w-full py-3.5 bg-gray-100 rounded-2xl text-gray-800 font-semibold text-sm">
+          Add holding
+        </button>
+      )}
     </Sheet>
   );
 }

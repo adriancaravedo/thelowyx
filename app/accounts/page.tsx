@@ -12,6 +12,7 @@ import MenuSheet from "@/components/sheets/MenuSheet";
 import AccountSheet from "@/components/sheets/AccountSheet";
 import AccountInfoSheet from "@/components/sheets/AccountInfoSheet";
 import TransactionSheet from "@/components/sheets/TransactionSheet";
+import HoldingSheet from "@/components/sheets/HoldingSheet";
 import { formatCurrency, calcChangePercent, getCombinedHistory, TimeRange } from "@/lib/utils";
 
 type TabType = "Debit Card" | "Credit Card" | "Investments" | "Real State" | "Loans" | "Others";
@@ -36,12 +37,30 @@ export default function AccountsPage() {
   const [infoOpen, setInfoOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [addTxOpen, setAddTxOpen] = useState(false);
+  const [holdingOpen, setHoldingOpen] = useState(false);
+  const [holdingAccountId, setHoldingAccountId] = useState("");
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [user, loading, router]);
+
+  const handleAddHolding = () => {
+    const investAccounts = accounts.filter(a => a.type === "investment");
+    if (investAccounts.length === 1) {
+      setHoldingAccountId(investAccounts[0].id);
+      setHoldingOpen(true);
+    } else if (investAccounts.length > 1) {
+      // Pick first for now — could add picker later
+      setHoldingAccountId(investAccounts[0].id);
+      setHoldingOpen(true);
+    } else {
+      // No investment account yet — open add account sheet
+      setAddDefaultType("Investments");
+      setAddOpen(true);
+    }
+  };
 
   // Net worth = (debit + investment + real_estate + other) - (credit balance + loans)
   const calcNetWorth = () => {
@@ -146,11 +165,12 @@ export default function AccountsPage() {
 
       <BottomNav onAddPress={() => setAddTxOpen(true)} />
       <MenuSheet open={menuOpen} onClose={() => setMenuOpen(false)} />
-      <AccountSheet open={addOpen} onClose={() => setAddOpen(false)} defaultType={addDefaultType} />
+      <AccountSheet open={addOpen} onClose={() => setAddOpen(false)} defaultType={addDefaultType} onAddHolding={handleAddHolding} />
       <AccountSheet open={editOpen} onClose={() => setEditOpen(false)} editAccount={selectedAccount} />
       <AccountInfoSheet open={infoOpen} onClose={() => setInfoOpen(false)} account={selectedAccount}
         onEdit={(a) => { setSelectedAccount(a); setInfoOpen(false); setTimeout(() => setEditOpen(true), 150); }} />
       <TransactionSheet open={addTxOpen} onClose={() => setAddTxOpen(false)} />
+      <HoldingSheet open={holdingOpen} onClose={() => setHoldingOpen(false)} accountId={holdingAccountId} />
     </div>
   );
 }
