@@ -12,10 +12,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.font-mono {
+/* All numbers use Geist Mono */
+.font-mono, [class*="font-mono"] {
   font-family: var(--font-geist-mono), monospace !important;
 }
 
-* {
-  box-sizing: border-box;
+/* Fix logo - transparent background */
+img[alt="TheLowyx"] {
+  background: transparent !important;
+  mix-blend-mode: normal;
 }
+
+/* Hide scrollbar but allow scroll */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+* { box-sizing: border-box; }

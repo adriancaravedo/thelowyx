@@ -4,20 +4,34 @@ import { collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query } from "
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/store/AuthContext";
 
-export type AccountType = "debit" | "credit" | "investment";
+export type AccountType = "debit" | "credit" | "investment" | "real_estate" | "loan" | "other";
 export type TransactionType = "income" | "expense";
 export type TransactionStatus = "paid" | "not_paid" | "received" | "not_received";
+
+export interface Holding {
+  id: string;
+  symbol: string;
+  description: string;
+  quantity: number;
+  buyPrice: number;
+  buyDate: string;
+  currentPrice?: number;
+  currentValue?: number;
+  changePercent?: number;
+}
 
 export interface Account {
   id: string;
   name: string;
   type: AccountType;
   last4: string;
+  description?: string;
   balance: number;
   limit?: number;
   color: string;
   createdAt: string;
   history: { date: string; balance: number }[];
+  holdings?: Holding[];
 }
 
 export interface Category {
@@ -57,6 +71,8 @@ interface AppState {
   addAccount: (a: Omit<Account, "id" | "history">) => Promise<void>;
   updateAccount: (id: string, a: Partial<Account>) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
+  addHolding: (accountId: string, h: Omit<Holding, "id">) => Promise<void>;
+  deleteHolding: (accountId: string, holdingId: string) => Promise<void>;
   addCategory: (c: Omit<Category, "id">) => Promise<void>;
   updateCategory: (id: string, c: Partial<Category>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
@@ -103,36 +119,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setNotifications(prev => [notif, ...prev]);
   }, []);
 
-  // Load user data from Firestore
   useEffect(() => {
     if (!user) {
-      setAccounts([]);
-      setCategories([]);
-      setTransactions([]);
-      setLoading(false);
+      setAccounts([]); setCategories([]); setTransactions([]); setLoading(false);
       return;
     }
-
     setLoading(true);
     const base = `users/${user.uid}`;
-
-    // Listen to accounts
-    const unsubAccounts = onSnapshot(
-      query(collection(db, `${base}/accounts`)),
-      snap => setAccounts(snap.docs.map(d => d.data() as Account))
-    );
-
-    // Listen to transactions
-    const unsubTx = onSnapshot(
-      query(collection(db, `${base}/transactions`)),
-      snap => setTransactions(snap.docs.map(d => d.data() as Transaction))
-    );
-
-    // Load categories — seed defaults if empty
+    const unsubAccounts = onSnapshot(query(collection(db, `${base}/accounts`)), snap => {
+      setAccounts(snap.docs.map(d => d.data() as Account));
+    });
+    const unsubTx = onSnapshot(query(collection(db, `${base}/transactions`)), snap => {
+      setTransactions(snap.docs.map(d => d.data() as Transaction));
+    });
     const loadCategories = async () => {
       const snap = await getDocs(collection(db, `${base}/categories`));
       if (snap.empty) {
-        // Seed default categories
         for (const cat of DEFAULT_CATEGORIES) {
           const id = uid();
           await setDoc(doc(db, `${base}/categories`, id), { ...cat, id });
@@ -144,13 +146,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       setLoading(false);
     };
-
     loadCategories();
-
-    return () => {
-      unsubAccounts();
-      unsubTx();
-    };
+    return () => { unsubAccounts(); unsubTx(); };
   }, [user]);
 
   const base = user ? `users/${user.uid}` : null;
@@ -158,8 +155,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addAccount = useCallback(async (a: Omit<Account, "id" | "history">) => {
     if (!base) return;
     const id = uid();
-    const newAcc: Account = { ...a, id, history: [{ date: today, balance: a.balance }] };
-    await setDoc(doc(db, `${base}/accounts`, id), newAcc);
+    await setDoc(doc(db, `${base}/accounts`, id), { ...a, id, history: [{ date: today, balance: a.balance }] });
     addNotification(`Account "${a.name}" added`);
   }, [base, addNotification]);
 
@@ -167,8 +163,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!base) return;
     const acc = accounts.find(a => a.id === id);
     if (!acc) return;
-    const updated = { ...acc, ...updates };
-    await setDoc(doc(db, `${base}/accounts`, id), updated);
+    await setDoc(doc(db, `${base}/accounts`, id), { ...acc, ...updates });
     addNotification("Account updated");
   }, [base, accounts, addNotification]);
 
@@ -177,6 +172,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await deleteDoc(doc(db, `${base}/accounts`, id));
     addNotification("Account deleted", "info");
   }, [base, addNotification]);
+
+  const addHolding = useCallback(async (accountId: string, h: Omit<Holding, "id">) => {
+    if (!base) return;
+    const acc = accounts.find(a => a.id === accountId);
+    if (!acc) return;
+    const id = uid();
+    const holding: Holding = { ...h, id };
+    const holdingValue = h.quantity * (h.currentPrice || h.buyPrice);
+    const newBalance = acc.balance + holdingValue;
+    const newHoldings = [...(acc.holdings || []), holding];
+    await setDoc(doc(db, `${base}/accounts`, accountId), {
+      ...acc, holdings: newHoldings, balance: parseFloat(newBalance.toFixed(2)),
+      history: [...acc.history, { date: today, balance: parseFloat(newBalance.toFixed(2)) }]
+    });
+    addNotification(`Holding ${h.symbol} added`);
+  }, [base, accounts, addNotification]);
+
+  const deleteHolding = useCallback(async (accountId: string, holdingId: string) => {
+    if (!base) return;
+    const acc = accounts.find(a => a.id === accountId);
+    if (!acc) return;
+    const holding = (acc.holdings || []).find(h => h.id === holdingId);
+    if (!holding) return;
+    const holdingValue = holding.quantity * (holding.currentPrice || holding.buyPrice);
+    const newBalance = acc.balance - holdingValue;
+    const newHoldings = (acc.holdings || []).filter(h => h.id !== holdingId);
+    await setDoc(doc(db, `${base}/accounts`, accountId), {
+      ...acc, holdings: newHoldings, balance: parseFloat(Math.max(0, newBalance).toFixed(2))
+    });
+    addNotification("Holding removed", "info");
+  }, [base, accounts, addNotification]);
 
   const addCategory = useCallback(async (c: Omit<Category, "id">) => {
     if (!base) return;
@@ -203,13 +229,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!base) return;
     const id = uid();
     await setDoc(doc(db, `${base}/transactions`, id), { ...t, id });
-    // Update account balance if paid/received
     if (t.status === "paid" || t.status === "received") {
       const acc = accounts.find(a => a.id === t.accountId);
       if (acc) {
         const newBalance = t.type === "income" ? acc.balance + t.amount : acc.balance - t.amount;
-        const newHistory = [...acc.history, { date: today, balance: parseFloat(newBalance.toFixed(2)) }];
-        await setDoc(doc(db, `${base}/accounts`, acc.id), { ...acc, balance: parseFloat(newBalance.toFixed(2)), history: newHistory });
+        await setDoc(doc(db, `${base}/accounts`, acc.id), {
+          ...acc, balance: parseFloat(newBalance.toFixed(2)),
+          history: [...acc.history, { date: today, balance: parseFloat(newBalance.toFixed(2)) }]
+        });
       }
     }
     addNotification(`Transaction "${t.name}" added`);
@@ -221,15 +248,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!tx) return;
     const updated = { ...tx, ...updates };
     await setDoc(doc(db, `${base}/transactions`, id), updated);
-    // If status changed to paid/received, update balance
     const wasUnpaid = tx.status === "not_paid" || tx.status === "not_received";
     const nowPaid = updated.status === "paid" || updated.status === "received";
     if (wasUnpaid && nowPaid) {
       const acc = accounts.find(a => a.id === updated.accountId);
       if (acc) {
         const newBalance = updated.type === "income" ? acc.balance + updated.amount : acc.balance - updated.amount;
-        const newHistory = [...acc.history, { date: today, balance: parseFloat(newBalance.toFixed(2)) }];
-        await setDoc(doc(db, `${base}/accounts`, acc.id), { ...acc, balance: parseFloat(newBalance.toFixed(2)), history: newHistory });
+        await setDoc(doc(db, `${base}/accounts`, acc.id), {
+          ...acc, balance: parseFloat(newBalance.toFixed(2)),
+          history: [...acc.history, { date: today, balance: parseFloat(newBalance.toFixed(2)) }]
+        });
       }
     }
     addNotification("Transaction updated");
@@ -250,7 +278,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       accounts, categories, transactions, notifications, loading,
-      addAccount, updateAccount, deleteAccount,
+      addAccount, updateAccount, deleteAccount, addHolding, deleteHolding,
       addCategory, updateCategory, deleteCategory,
       addTransaction, updateTransaction, deleteTransaction,
       addNotification, markNotificationRead, clearNotifications,

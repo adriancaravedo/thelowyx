@@ -19,7 +19,12 @@ export default function Header({ title, onMenuOpen }: HeaderProps) {
       </div>
       <div className="flex items-center gap-2">
         <NotificationPanel />
-        <img src="/thelowyx.png" alt="TheLowyx" className="h-8 w-auto" />
+        <img
+          src="/thelowyx.png"
+          alt="TheLowyx"
+          className="h-8 w-auto"
+          style={{ background: "transparent", mixBlendMode: "normal" }}
+        />
       </div>
     </header>
   );

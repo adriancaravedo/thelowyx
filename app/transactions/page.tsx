@@ -1,31 +1,41 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useApp, Transaction } from "@/store/AppContext";
+import { useAuth } from "@/store/AuthContext";
 import Header from "@/components/ui/Header";
 import BottomNav from "@/components/ui/BottomNav";
 import Badge from "@/components/ui/Badge";
 import MenuSheet from "@/components/sheets/MenuSheet";
-import SettingsSheet from "@/components/sheets/SettingsSheet";
 import TransactionSheet from "@/components/sheets/TransactionSheet";
 import TransactionInfoSheet from "@/components/sheets/TransactionInfoSheet";
-import { formatCurrency, groupTransactionsByDate, isUpcoming, getMonthlyIncomeSpend, getMonthKey } from "@/lib/utils";
+import { formatCurrency, groupTransactionsByDate, getMonthlyIncomeSpend, getMonthKey } from "@/lib/utils";
 
 export default function TransactionsPage() {
   const { transactions, categories } = useApp();
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [search, setSearch] = useState("");
 
-  const upcoming = transactions.filter(t => isUpcoming(t.date));
+  useEffect(() => {
+    if (!loading && !user) router.replace("/login");
+  }, [user, loading, router]);
+
+  // Upcoming = only not_paid or not_received regardless of date
+  const upcoming = transactions.filter(t => t.status === "not_paid" || t.status === "not_received");
   const groups = groupTransactionsByDate(transactions);
 
   const filtered = search
-    ? groups.map(g => ({ ...g, transactions: g.transactions.filter(t => t.name.toLowerCase().includes(search.toLowerCase())) })).filter(g => g.transactions.length > 0 || g.isSummary)
+    ? groups
+        .filter(g => !g.isSummary)
+        .map(g => ({ ...g, transactions: g.transactions.filter(t => t.name.toLowerCase().includes(search.toLowerCase())) }))
+        .filter(g => g.transactions.length > 0)
     : groups;
 
   const getCat = (id: string) => categories.find(c => c.id === id);
@@ -34,14 +44,11 @@ export default function TransactionsPage() {
     <div className="min-h-screen bg-gray-50 pb-28">
       <Header title="Transactions" onMenuOpen={() => setMenuOpen(true)} />
 
-      {/* Search bar */}
       <div className="px-4 pt-3 pb-2 flex gap-2">
         <div className="flex-1 flex items-center gap-2 bg-white rounded-2xl px-4 py-2.5 shadow-sm">
           <Search size={15} className="text-gray-400 flex-shrink-0" />
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search" className="flex-1 text-sm bg-transparent focus:outline-none text-gray-700 placeholder:text-gray-300"
-          />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search"
+            className="flex-1 text-sm bg-transparent focus:outline-none text-gray-700 placeholder:text-gray-300" />
         </div>
         <button className="bg-white rounded-2xl px-3 shadow-sm flex items-center">
           <SlidersHorizontal size={16} className="text-gray-400" />
@@ -53,23 +60,24 @@ export default function TransactionsPage() {
 
       <div className="px-4 space-y-3">
         {/* Upcoming */}
-        {upcoming.length > 0 && (
+        {!search && upcoming.length > 0 && (
           <div className="bg-gray-100 rounded-2xl p-4">
             <div className="text-xs text-gray-400 font-medium mb-2">Upcoming</div>
             <div className="space-y-2">
               {upcoming.map(tx => {
                 const cat = getCat(tx.categoryId);
                 return (
-                  <div key={tx.id} className="flex items-center justify-between">
+                  <button key={tx.id} onClick={() => { setSelected(tx); setInfoOpen(true); }}
+                    className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-800">{tx.name}</span>
                       {cat && <Badge label={cat.name} color={cat.color} />}
                       {tx.recurring && <Badge label="Recurring" color="#6b7280" />}
                     </div>
                     <span className={`text-sm font-semibold font-mono ${tx.type === "income" ? "text-green-600" : "text-red-500"}`}>
-                      {tx.type === "income" ? "" : "-"}{formatCurrency(tx.amount)}
+                      {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
                     </span>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -78,7 +86,7 @@ export default function TransactionsPage() {
 
         {/* Grouped transactions */}
         {filtered.map((group, idx) => {
-          if (group.isSummary && group.monthKey) {
+          if (group.isSummary && group.monthKey && !search) {
             const { income, spend } = getMonthlyIncomeSpend(transactions, group.monthKey);
             return (
               <div key={`summary-${idx}`} className="bg-white rounded-2xl p-4 text-center">
@@ -101,6 +109,7 @@ export default function TransactionsPage() {
             );
           }
 
+          if (group.isSummary) return null;
           if (group.transactions.length === 0) return null;
 
           return (
@@ -108,39 +117,33 @@ export default function TransactionsPage() {
               <div className="px-4 pt-3 pb-1">
                 <span className="text-xs text-gray-400 font-medium">{group.label}</span>
               </div>
-              <div>
-                {group.transactions.map((tx, ti) => {
-                  const cat = getCat(tx.categoryId);
-                  return (
-                    <button
-                      key={tx.id}
-                      onClick={() => { setSelected(tx); setInfoOpen(true); }}
-                      className={`w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 ${ti < group.transactions.length - 1 ? "border-b border-gray-50" : ""}`}
-                    >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <span className="text-sm font-medium text-gray-800 truncate">{tx.name}</span>
-                        {cat && <Badge label={cat.name} color={cat.color} />}
-                        {tx.recurring && <Badge label="Recurring" color="#6b7280" />}
-                      </div>
-                      <span className={`text-sm font-semibold font-mono flex-shrink-0 ml-2 ${tx.type === "income" ? "text-gray-900" : "text-gray-900"}`}>
-                        {tx.type === "income" ? "" : "-"}{formatCurrency(tx.amount)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              {group.transactions.map((tx, ti) => {
+                const cat = getCat(tx.categoryId);
+                return (
+                  <button key={tx.id} onClick={() => { setSelected(tx); setInfoOpen(true); }}
+                    className={`w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 ${ti < group.transactions.length - 1 ? "border-b border-gray-50" : ""}`}>
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-sm font-medium text-gray-800 truncate">{tx.name}</span>
+                      {cat && <Badge label={cat.name} color={cat.color} />}
+                      {tx.recurring && <Badge label="Recurring" color="#6b7280" />}
+                    </div>
+                    <span className="text-sm font-semibold font-mono flex-shrink-0 ml-2 text-gray-900">
+                      {tx.type === "income" ? "" : "-"}{formatCurrency(tx.amount)}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           );
         })}
       </div>
 
       <BottomNav onAddPress={() => setAddOpen(true)} />
-      <MenuSheet open={menuOpen} onClose={() => setMenuOpen(false)} onSettingsOpen={() => setSettingsOpen(true)} />
-      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <MenuSheet open={menuOpen} onClose={() => setMenuOpen(false)} />
       <TransactionSheet open={addOpen} onClose={() => setAddOpen(false)} />
       <TransactionSheet open={editOpen} onClose={() => setEditOpen(false)} editTransaction={selected} />
       <TransactionInfoSheet open={infoOpen} onClose={() => setInfoOpen(false)} transaction={selected}
-        onEdit={(t) => { setSelected(t); setEditOpen(true); }} />
+        onEdit={(t) => { setSelected(t); setInfoOpen(false); setTimeout(() => setEditOpen(true), 150); }} />
     </div>
   );
 }
