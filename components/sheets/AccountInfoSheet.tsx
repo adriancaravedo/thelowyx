@@ -15,8 +15,10 @@ interface AccountInfoSheetProps {
   onEdit: (a: Account) => void;
 }
 
+const MONO = { fontFamily: "var(--font-geist-mono)" };
+
 export default function AccountInfoSheet({ open, onClose, account, onEdit }: AccountInfoSheetProps) {
-  const { deleteAccount, deleteHolding } = useApp();
+  const { deleteAccount } = useApp();
   const [range, setRange] = useState<TimeRange>("1M");
   const [holdingOpen, setHoldingOpen] = useState(false);
 
@@ -25,52 +27,68 @@ export default function AccountInfoSheet({ open, onClose, account, onEdit }: Acc
   const change = calcChangePercent(account.history, range);
   const isPositive = change >= 0;
   const isInvestment = account.type === "investment";
-  const isRealEstate = account.type === "real_estate";
   const isCredit = account.type === "credit";
+  const isRealEstate = account.type === "real_estate";
   const isLoan = account.type === "loan";
+  const utilized = isCredit && account.limit
+    ? ((account.balance / account.limit) * 100).toFixed(2) : null;
+
+  const typeLabel = {
+    debit: "Debit Cards", credit: "Credit Cards", investment: "Investments",
+    real_estate: "Real State", loan: "Loans", other: "Others"
+  }[account.type] || "";
 
   const handleDelete = () => { deleteAccount(account.id); onClose(); };
-
-  const utilized = isCredit && account.limit ? ((account.balance / account.limit) * 100).toFixed(2) : null;
 
   return (
     <>
       <Sheet open={open} onClose={onClose}>
-        <div className="text-center text-xs text-gray-400 mb-3">
-          {account.type === "debit" ? "Debit Cards" : account.type === "credit" ? "Credit Cards" :
-           account.type === "investment" ? "Investments" : account.type === "real_estate" ? "Real State" :
-           account.type === "loan" ? "Loans" : "Others"}
-        </div>
+        <div className="text-center text-xs text-gray-400 mb-3">{typeLabel}</div>
 
+        {/* Card preview */}
         <div className="flex justify-center mb-3">
           <AccountCard account={account} size="lg" />
         </div>
 
-        <div className="text-center font-bold text-lg mb-3">{account.description || account.name}</div>
+        {/* Name */}
+        <div className="text-center font-bold text-lg mb-3">
+          {account.description || account.name}
+        </div>
 
-        {/* Stats row */}
-        <div className={`flex justify-center gap-8 mb-4`}>
-          {isRealEstate ? (
+        {/* Stats */}
+        <div className="flex justify-center gap-8 mb-4">
+          {isCredit ? (
             <>
               <div className="text-center">
-                <div className={`text-sm font-semibold ${isPositive ? "text-green-500" : "text-red-500"}`}>
-                  {isPositive ? "↗" : "↘"} {Math.abs(change)}%
-                </div>
-                <div className="text-xs text-gray-400 mt-0.5">Estimated value</div>
-                <div className="text-sm font-semibold">{formatCurrency(account.balance)}</div>
+                <div className="text-xs text-gray-400">Balance</div>
+                <div className="text-sm font-semibold" style={MONO}>{formatCurrency(account.balance)}</div>
               </div>
+              {account.limit && (
+                <div className="text-center">
+                  <div className="text-xs text-gray-400">Limit</div>
+                  <div className="text-sm font-semibold" style={MONO}>{formatCurrency(account.limit)}</div>
+                </div>
+              )}
+              {utilized && (
+                <div className="text-center">
+                  <div className="text-xs text-gray-400">Utilized</div>
+                  <div className="text-sm font-semibold text-green-500" style={MONO}>{utilized}%</div>
+                </div>
+              )}
             </>
-          ) : isCredit ? (
-            <>
-              <div className="text-center"><div className="text-xs text-gray-400">Balance</div><div className="text-sm font-semibold">{formatCurrency(account.balance)}</div></div>
-              {account.limit && <div className="text-center"><div className="text-xs text-gray-400">Limit</div><div className="text-sm font-semibold">{formatCurrency(account.limit)}</div></div>}
-              {utilized && <div className="text-center"><div className="text-xs text-gray-400">Utilized</div><div className="text-sm font-semibold text-green-500">{utilized}%</div></div>}
-            </>
+          ) : isRealEstate ? (
+            <div className="text-center">
+              <div className={`text-sm font-semibold ${isPositive ? "text-green-500" : "text-red-500"}`}>
+                {isPositive ? "↗" : "↘"} {Math.abs(change)}%
+              </div>
+              <div className="text-xs text-gray-400">Estimated value</div>
+              <div className="text-sm font-semibold" style={MONO}>{formatCurrency(account.balance)}</div>
+            </div>
           ) : (
             <>
               <div className="text-center">
                 <div className="text-xs text-gray-400">{isLoan ? "Current" : "Available"}</div>
-                <div className="text-sm font-semibold">{formatCurrency(account.balance)}</div>
+                <div className="text-sm font-semibold" style={MONO}>{formatCurrency(account.balance)}</div>
               </div>
               <div className="text-center">
                 <div className="text-xs text-gray-400">Change</div>
@@ -82,30 +100,49 @@ export default function AccountInfoSheet({ open, onClose, account, onEdit }: Acc
           )}
         </div>
 
+        {/* Chart */}
         <Sparkline history={account.history} range={range} height={120} />
-        <div className="mt-2 mb-4"><RangeSelector value={range} onChange={setRange} /></div>
+        <div className="mt-2 mb-4">
+          <RangeSelector value={range} onChange={setRange} />
+        </div>
 
-        {/* Holdings */}
+        {/* Holdings — horizontal scroll cards */}
         {isInvestment && (account.holdings || []).length > 0 && (
-          <div className="mb-4">
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {(account.holdings || []).map(h => (
-                <div key={h.id} className="min-w-[140px] bg-gray-50 rounded-2xl p-3 flex-shrink-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-gray-900 font-mono">{h.quantity} {h.symbol}</span>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${(h.changePercent || 0) >= 0 ? "bg-green-400 text-white" : "bg-red-400 text-white"}`}>
-                      {(h.changePercent || 0) >= 0 ? "↗" : "↘"}{Math.abs(h.changePercent || 0).toFixed(2)}%
-                    </span>
+          <div className="mb-4 -mx-1">
+            <div className="flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-hide">
+              {(account.holdings || []).map(h => {
+                const hChange = h.changePercent || 0;
+                const hPositive = hChange >= 0;
+                // Mini sparkline data from account history
+                const miniHistory = account.history.slice(-10);
+                return (
+                  <div key={h.id} className="min-w-[140px] bg-white border border-gray-100 rounded-2xl p-3 flex-shrink-0 shadow-sm">
+                    {/* Header row */}
+                    <div className="flex items-start justify-between mb-1">
+                      <div>
+                        <span className="text-xs text-gray-400 mr-1">{h.quantity}</span>
+                        <span className="text-xs font-bold text-gray-900" style={MONO}>{h.symbol}</span>
+                      </div>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${hPositive ? "bg-green-400 text-white" : "bg-red-400 text-white"}`}>
+                        {hPositive ? "↗" : "↘"}{Math.abs(hChange).toFixed(2)}%
+                      </span>
+                    </div>
+                    {/* Description */}
+                    <div className="text-[9px] text-gray-400 truncate mb-2">{h.description}</div>
+                    {/* Mini sparkline */}
+                    <Sparkline history={miniHistory} range="1M" height={40} showDot={true} />
+                    {/* Value */}
+                    <div className="text-sm font-bold text-gray-900 mt-2" style={MONO}>
+                      {formatCurrency(h.currentValue || h.quantity * h.buyPrice)}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-gray-400 truncate mb-2">{h.description}</div>
-                  <Sparkline history={account.history.slice(-10)} range="1M" height={40} showDot={false} />
-                  <div className="text-sm font-bold text-gray-900 mt-1">{formatCurrency(h.currentValue || h.quantity * h.buyPrice)}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
 
+        {/* Actions */}
         <button onClick={() => { onClose(); setTimeout(() => onEdit(account), 150); }}
           className="w-full py-3.5 bg-gray-100 rounded-2xl text-gray-800 font-semibold text-sm mb-2">
           Edit account
@@ -121,7 +158,11 @@ export default function AccountInfoSheet({ open, onClose, account, onEdit }: Acc
         </button>
       </Sheet>
 
-      <HoldingSheet open={holdingOpen} onClose={() => setHoldingOpen(false)} accountId={account.id} />
+      <HoldingSheet
+        open={holdingOpen}
+        onClose={() => setHoldingOpen(false)}
+        accountId={account.id}
+      />
     </>
   );
 }

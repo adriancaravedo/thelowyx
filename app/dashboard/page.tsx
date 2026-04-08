@@ -7,26 +7,25 @@ import Header from "@/components/ui/Header";
 import BottomNav from "@/components/ui/BottomNav";
 import Sparkline from "@/components/ui/Sparkline";
 import RangeSelector from "@/components/ui/RangeSelector";
-import Badge from "@/components/ui/Badge";
 import MenuSheet from "@/components/sheets/MenuSheet";
-import SettingsSheet from "@/components/sheets/SettingsSheet";
 import TransactionSheet from "@/components/sheets/TransactionSheet";
 import OnboardingSheet from "@/components/sheets/OnboardingSheet";
-import { formatCurrency, calcChangePercent, getCombinedHistory, getMonthlyIncomeSpend, getCurrentMonthKey, isUpcoming, TimeRange } from "@/lib/utils";
+import { formatCurrency, calcChangePercent, getCombinedHistory, getMonthlyIncomeSpend, getCurrentMonthKey, TimeRange } from "@/lib/utils";
 import { Line } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Filler } from "chart.js";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler);
+
+const MONO = { fontFamily: "var(--font-geist-mono)" };
 
 export default function DashboardPage() {
   const { accounts, transactions } = useApp();
   const { user, profile, loading } = useAuth();
   const router = useRouter();
   const [range, setRange] = useState<TimeRange>("1M");
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [addTxOpen, setAddTxOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -35,20 +34,30 @@ export default function DashboardPage() {
   }, [user, profile, loading, router]);
 
   const combinedHistory = getCombinedHistory(accounts);
-  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
+
+  // Net worth = (debit + investment + real_estate + other) - (credit + loan)
+  const totalBalance = accounts.reduce((s, a) => {
+    if (["debit", "investment", "real_estate", "other"].includes(a.type)) return s + a.balance;
+    if (["credit", "loan"].includes(a.type)) return s - a.balance;
+    return s;
+  }, 0);
+
   const change = calcChangePercent(combinedHistory, range);
   const isPositive = change >= 0;
 
-  const upcoming = transactions.filter(t => isUpcoming(t.date)).slice(0, 3);
+  // Upcoming = only not_paid / not_received
+  const upcoming = transactions.filter(t => t.status === "not_paid" || t.status === "not_received").slice(0, 3);
 
   const monthKey = getCurrentMonthKey();
   const monthName = new Date().toLocaleDateString("en-US", { month: "long" });
   const { income, spend } = getMonthlyIncomeSpend(transactions, monthKey);
   const netMonth = income - spend;
-  const currentMonthTxs = transactions.filter(t => t.date.startsWith(monthKey) && (t.status === "paid" || t.status === "received"));
 
-  // Build income/spend daily data for chart
+  // Monthly income/spend chart
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const currentMonthTxs = transactions.filter(t =>
+    t.date.startsWith(monthKey) && (t.status === "paid" || t.status === "received")
+  );
   const incomeData = Array.from({ length: daysInMonth }, (_, i) => {
     const day = String(i + 1).padStart(2, "0");
     const dateStr = `${monthKey}-${day}`;
@@ -60,12 +69,13 @@ export default function DashboardPage() {
     return currentMonthTxs.filter(t => t.date <= dateStr && t.type === "expense").reduce((s, t) => s + t.amount, 0);
   });
   const dayLabels = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
+  const currency = profile?.currency === "PEN" ? "S/." : "$";
 
   return (
     <div className="min-h-screen bg-gray-50 pb-28">
       <Header title="Dashboard" onMenuOpen={() => setMenuOpen(true)} />
-
       <div className="px-4 pt-2 space-y-4">
+
         {/* Balance card */}
         <div className="bg-white rounded-3xl p-5">
           <div className="flex justify-center mb-2">
@@ -74,7 +84,9 @@ export default function DashboardPage() {
             </span>
           </div>
           <div className="text-center">
-            <div className="text-4xl font-bold tracking-tight text-gray-900">{formatCurrency(totalBalance)}</div>
+            <div className="text-4xl font-bold tracking-tight text-gray-900" style={MONO}>
+              {currency}{Math.abs(totalBalance).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            </div>
             <div className="text-sm text-gray-400 mt-1">Total balance</div>
           </div>
           <div className="mt-4">
@@ -99,7 +111,7 @@ export default function DashboardPage() {
                   <div className="text-[10px] text-gray-400 mt-0.5">
                     {new Date(tx.date + "T12:00:00").toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })}
                   </div>
-                  <div className={`text-sm font-bold mt-3 font-mono ${tx.type === "income" ? "text-green-500" : "text-red-500"}`}>
+                  <div className={`text-sm font-bold mt-3 ${tx.type === "income" ? "text-green-500" : "text-red-500"}`} style={MONO}>
                     {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
                   </div>
                 </div>
@@ -115,13 +127,13 @@ export default function DashboardPage() {
             <span className="text-sm text-gray-400">Net this month</span>
           </div>
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl font-bold text-gray-900">{netMonth >= 0 ? "+" : ""}{formatCurrency(netMonth)}</span>
+            <span className="text-2xl font-bold text-gray-900" style={MONO}>
+              {netMonth >= 0 ? "+" : ""}{formatCurrency(netMonth)}
+            </span>
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${netMonth >= 0 ? "bg-green-400 text-white" : "bg-red-400 text-white"}`}>
               ↗{Math.abs(change)}%
             </span>
           </div>
-
-          {/* Income vs Spend chart */}
           <div style={{ height: 150 }}>
             <Line
               data={{
@@ -138,29 +150,25 @@ export default function DashboardPage() {
               }}
             />
           </div>
-
           <div className="flex gap-6 mt-3">
             <div>
               <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                Income
+                <div className="w-2 h-2 rounded-full bg-green-500" /> Income
               </div>
-              <div className="text-sm font-bold text-green-500 font-mono">{formatCurrency(income)}</div>
+              <div className="text-sm font-bold text-green-500" style={MONO}>{formatCurrency(income)}</div>
             </div>
             <div>
               <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                <div className="w-2 h-2 rounded-full bg-blue-400" />
-                Spend
+                <div className="w-2 h-2 rounded-full bg-blue-400" /> Spend
               </div>
-              <div className="text-sm font-bold text-red-500 font-mono">{formatCurrency(spend)}</div>
+              <div className="text-sm font-bold text-red-500" style={MONO}>{formatCurrency(spend)}</div>
             </div>
           </div>
         </div>
       </div>
 
       <BottomNav onAddPress={() => setAddTxOpen(true)} />
-      <MenuSheet open={menuOpen} onClose={() => setMenuOpen(false)} onSettingsOpen={() => setSettingsOpen(true)} />
-      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <MenuSheet open={menuOpen} onClose={() => setMenuOpen(false)} />
       <TransactionSheet open={addTxOpen} onClose={() => setAddTxOpen(false)} />
       <OnboardingSheet open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
     </div>

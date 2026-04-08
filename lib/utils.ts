@@ -2,9 +2,7 @@ import { Transaction, Account } from "@/store/AppContext";
 
 export const formatCurrency = (amount: number, showSign = false): string => {
   const formatted = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
+    style: "currency", currency: "USD", minimumFractionDigits: 2,
   }).format(Math.abs(amount));
   if (showSign) return amount >= 0 ? `+${formatted}` : `-${formatted}`;
   return formatted;
@@ -20,36 +18,13 @@ export const formatDateLong = (dateStr: string): string => {
   return date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" });
 };
 
-export const isUpcoming = (dateStr: string): boolean => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const txDate = new Date(dateStr + "T12:00:00");
-  return txDate > today;
-};
-
-export const isToday = (dateStr: string): boolean => {
-  const today = new Date();
-  return dateStr === today.toISOString().split("T")[0];
-};
-
-export const isYesterday = (dateStr: string): boolean => {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  return dateStr === yesterday.toISOString().split("T")[0];
-};
-
 export const getMonthLabel = (dateStr: string): string => {
   const date = new Date(dateStr + "T12:00:00");
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 };
 
-export const getMonthKey = (dateStr: string): string => {
-  return dateStr.slice(0, 7); // "2026-03"
-};
-
-export const getCurrentMonthKey = (): string => {
-  return new Date().toISOString().slice(0, 7);
-};
+export const getMonthKey = (dateStr: string): string => dateStr.slice(0, 7);
+export const getCurrentMonthKey = (): string => new Date().toISOString().slice(0, 7);
 
 export type TimeRange = "1D" | "1W" | "1M" | "1Y" | "YTD";
 
@@ -79,9 +54,8 @@ export const calcChangePercent = (history: { date: string; balance: number }[], 
   return parseFloat(((last - first) / first * 100).toFixed(2));
 };
 
-export const getTotalBalance = (accounts: Account[]): number => {
-  return accounts.reduce((sum, a) => sum + a.balance, 0);
-};
+export const getTotalBalance = (accounts: Account[]): number =>
+  accounts.reduce((sum, a) => sum + a.balance, 0);
 
 export const getCombinedHistory = (accounts: Account[]): { date: string; balance: number }[] => {
   const map = new Map<string, number>();
@@ -106,10 +80,11 @@ export const getMonthlyIncomeSpend = (transactions: Transaction[], monthKey: str
 };
 
 export const groupTransactionsByDate = (transactions: Transaction[]) => {
-  const today = new Date().toISOString().split("T")[0];
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+  const todayStr = new Date().toISOString().split("T")[0];
+  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split("T")[0];
 
-  const paid = transactions.filter(t => !isUpcoming(t.date));
+  // Only show paid/received transactions in the list (not upcoming)
+  const paid = transactions.filter(t => t.status === "paid" || t.status === "received");
   const sorted = [...paid].sort((a, b) => b.date.localeCompare(a.date));
 
   const groups: { label: string; monthKey?: string; transactions: Transaction[]; isSummary?: boolean }[] = [];
@@ -122,23 +97,20 @@ export const groupTransactionsByDate = (transactions: Transaction[]) => {
   });
 
   const dates = Array.from(dateGroups.keys()).sort((a, b) => b.localeCompare(a));
+  const currentMk = getCurrentMonthKey();
 
   dates.forEach(date => {
     const mk = getMonthKey(date);
-    // Insert monthly summary when month changes
     if (!monthsSeen.has(mk)) {
-      const currentMk = getCurrentMonthKey();
       if (mk !== currentMk) {
         groups.push({ label: getMonthLabel(date), monthKey: mk, transactions: [], isSummary: true });
       }
       monthsSeen.add(mk);
     }
-
     let label = date;
-    if (date === today) label = "Today";
-    else if (date === yesterday) label = "Yesterday";
+    if (date === todayStr) label = "Today";
+    else if (date === yesterdayStr) label = "Yesterday";
     else label = new Date(date + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-
     groups.push({ label, transactions: dateGroups.get(date)! });
   });
 

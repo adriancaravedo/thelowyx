@@ -3,8 +3,7 @@ import { useState, useEffect } from "react";
 import Sheet from "@/components/ui/Sheet";
 import Toggle from "@/components/ui/Toggle";
 import Badge from "@/components/ui/Badge";
-import { useApp, Transaction, TransactionType, TransactionStatus } from "@/store/AppContext";
-import { formatDateLong } from "@/lib/utils";
+import { useApp, Transaction, TransactionType } from "@/store/AppContext";
 
 interface TransactionSheetProps {
   open: boolean;
@@ -20,7 +19,7 @@ export default function TransactionSheet({ open, onClose, editTransaction }: Tra
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [categoryId, setCategoryId] = useState("");
   const [accountId, setAccountId] = useState("");
-  const [status, setStatus] = useState<"left" | "right">("left"); // left = Paid/Received, right = Not Paid/Not Received
+  const [status, setStatus] = useState<"paid" | "not_paid" | "received" | "not_received">("paid");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showAccountPicker, setShowAccountPicker] = useState(false);
 
@@ -36,7 +35,7 @@ export default function TransactionSheet({ open, onClose, editTransaction }: Tra
       setDate(editTransaction.date);
       setCategoryId(editTransaction.categoryId);
       setAccountId(editTransaction.accountId);
-      setStatus(editTransaction.status === "paid" || editTransaction.status === "received" ? "left" : "right");
+      setStatus(editTransaction.status);
     } else {
       setType("Expense");
       setName("");
@@ -44,36 +43,41 @@ export default function TransactionSheet({ open, onClose, editTransaction }: Tra
       setDate(new Date().toISOString().split("T")[0]);
       setCategoryId("");
       setAccountId(accounts[0]?.id || "");
-      setStatus("right");
+      setStatus("paid"); // default = paid so it shows in list
     }
     setShowCategoryPicker(false);
     setShowAccountPicker(false);
   }, [editTransaction, open, accounts]);
 
-  const getStatus = (): TransactionStatus => {
-    if (type === "Income") return status === "left" ? "received" : "not_received";
-    return status === "left" ? "paid" : "not_paid";
+  // When type changes, update status to match
+  const handleTypeChange = (v: string) => {
+    const t = v as "Income" | "Expense";
+    setType(t);
+    setCategoryId("");
+    setStatus(t === "Income" ? "received" : "paid");
   };
 
-  const handleSubmit = () => {
+  const isPaid = status === "paid" || status === "received";
+
+  const toggleStatus = (paid: boolean) => {
+    if (type === "Income") setStatus(paid ? "received" : "not_received");
+    else setStatus(paid ? "paid" : "not_paid");
+  };
+
+  const handleSubmit = async () => {
     if (!name || !amount || !accountId) return;
     const txType: TransactionType = type === "Income" ? "income" : "expense";
     const data = {
       name, amount: parseFloat(amount), date, type: txType,
       categoryId: categoryId || filteredCats[0]?.id || "",
-      accountId, status: getStatus(),
+      accountId, status,
     };
-    if (editTransaction) updateTransaction(editTransaction.id, data);
-    else addTransaction(data);
+    if (editTransaction) await updateTransaction(editTransaction.id, data);
+    else await addTransaction(data);
     onClose();
   };
 
-  const fieldRow = (label: string, content: React.ReactNode) => (
-    <div className="mb-5 text-center">
-      <div className="text-sm font-semibold text-gray-800 mb-1">{label}</div>
-      {content}
-    </div>
-  );
+  const inputClass = "w-full text-center text-gray-400 text-sm border-b border-gray-100 pb-1 focus:outline-none focus:border-blue-400 bg-transparent";
 
   if (showCategoryPicker) {
     return (
@@ -121,58 +125,57 @@ export default function TransactionSheet({ open, onClose, editTransaction }: Tra
   return (
     <Sheet open={open} onClose={onClose}>
       <div className="mb-5">
-        <Toggle options={["Income", "Expense"]} value={type} onChange={v => { setType(v as "Income" | "Expense"); setCategoryId(""); }} />
+        <Toggle options={["Income", "Expense"]} value={type} onChange={handleTypeChange} />
       </div>
 
-      {fieldRow("Name",
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Transaction name"
-          className="w-full text-center text-gray-400 text-sm border-0 border-b border-gray-100 pb-1 focus:outline-none focus:border-blue-400 bg-transparent" />
-      )}
+      <div className="mb-4 text-center">
+        <div className="text-sm font-semibold text-gray-800 mb-1">Name</div>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Transaction name" className={inputClass} />
+      </div>
 
-      {fieldRow("Amount",
-        <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="$0.00"
-          className="w-full text-center text-gray-400 text-sm border-0 border-b border-gray-100 pb-1 focus:outline-none focus:border-blue-400 bg-transparent" />
-      )}
+      <div className="mb-4 text-center">
+        <div className="text-sm font-semibold text-gray-800 mb-1">Amount</div>
+        <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="$0.00" className={inputClass} />
+      </div>
 
-      {fieldRow("Date",
-        <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          className="w-full text-center text-gray-400 text-sm border-0 border-b border-gray-100 pb-1 focus:outline-none focus:border-blue-400 bg-transparent" />
-      )}
+      <div className="mb-4 text-center">
+        <div className="text-sm font-semibold text-gray-800 mb-1">Date</div>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputClass} />
+      </div>
 
-      {fieldRow("Category",
+      <div className="mb-4 text-center">
+        <div className="text-sm font-semibold text-gray-800 mb-1">Category</div>
         <button onClick={() => setShowCategoryPicker(true)} className="inline-block">
           {selectedCat
             ? <Badge label={selectedCat.name} color={selectedCat.color} size="sm" />
             : <span className="text-gray-400 text-sm border-b border-gray-100 pb-1">Select category</span>
           }
         </button>
-      )}
+      </div>
 
-      {fieldRow("Account",
+      <div className="mb-5 text-center">
+        <div className="text-sm font-semibold text-gray-800 mb-1">Account</div>
         <button onClick={() => setShowAccountPicker(true)}>
           <span className="text-gray-400 text-sm border-b border-gray-100 pb-1">
             {selectedAcc ? `${selectedAcc.name} ${selectedAcc.last4}` : "Select account"}
           </span>
         </button>
-      )}
+      </div>
 
       {/* Status toggle */}
       <div className="flex justify-center gap-3 mb-6">
-        <button
-          onClick={() => setStatus("left")}
-          className={`px-5 py-2 rounded-full border text-sm font-medium transition-all ${status === "left" ? "border-gray-800 text-gray-800" : "border-gray-200 text-gray-400"}`}
-        >
+        <button onClick={() => toggleStatus(true)}
+          className={`px-5 py-2 rounded-full border text-sm font-medium transition-all ${isPaid ? "border-gray-800 text-gray-800" : "border-gray-200 text-gray-400"}`}>
           {type === "Income" ? "Received" : "Paid"}
         </button>
-        <button
-          onClick={() => setStatus("right")}
-          className={`px-5 py-2 rounded-full border text-sm font-medium transition-all ${status === "right" ? "border-gray-800 text-gray-800" : "border-gray-200 text-gray-400"}`}
-        >
+        <button onClick={() => toggleStatus(false)}
+          className={`px-5 py-2 rounded-full border text-sm font-medium transition-all ${!isPaid ? "border-gray-800 text-gray-800" : "border-gray-200 text-gray-400"}`}>
           {type === "Income" ? "Not Received" : "Not Paid"}
         </button>
       </div>
 
-      <button onClick={handleSubmit} className="w-full py-3.5 bg-gray-100 rounded-2xl text-gray-800 font-semibold text-sm">
+      <button onClick={handleSubmit} disabled={!name || !amount || !accountId}
+        className="w-full py-3.5 bg-gray-100 rounded-2xl text-gray-800 font-semibold text-sm disabled:opacity-40">
         {editTransaction ? "Save changes" : "Add transaction"}
       </button>
     </Sheet>
