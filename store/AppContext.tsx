@@ -66,6 +66,7 @@ interface AppState {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
+  standAloneHoldings: Holding[];
   notifications: Notification[];
   loading: boolean;
   addAccount: (a: Omit<Account, "id" | "history">) => Promise<void>;
@@ -73,6 +74,9 @@ interface AppState {
   deleteAccount: (id: string) => Promise<void>;
   addHolding: (accountId: string, h: Omit<Holding, "id">) => Promise<void>;
   deleteHolding: (accountId: string, holdingId: string) => Promise<void>;
+  addStandAloneHolding: (h: Omit<Holding, "id">) => Promise<void>;
+  updateStandAloneHolding: (id: string, h: Partial<Holding>) => Promise<void>;
+  deleteStandAloneHolding: (id: string) => Promise<void>;
   addCategory: (c: Omit<Category, "id">) => Promise<void>;
   updateCategory: (id: string, c: Partial<Category>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
@@ -111,6 +115,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [standAloneHoldings, setStandAloneHoldings] = useState<Holding[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -132,6 +137,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const unsubTx = onSnapshot(query(collection(db, `${base}/transactions`)), snap => {
       setTransactions(snap.docs.map(d => d.data() as Transaction));
     });
+    const unsubHoldings = onSnapshot(query(collection(db, `${base}/standAloneHoldings`)), snap => {
+      setStandAloneHoldings(snap.docs.map(d => d.data() as Holding));
+    });
     const loadCategories = async () => {
       const snap = await getDocs(collection(db, `${base}/categories`));
       if (snap.empty) {
@@ -147,7 +155,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     };
     loadCategories();
-    return () => { unsubAccounts(); unsubTx(); };
+    return () => { unsubAccounts(); unsubTx(); unsubHoldings(); };
   }, [user]);
 
   const base = user ? `users/${user.uid}` : null;
@@ -269,7 +277,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addNotification("Transaction deleted", "info");
   }, [base, addNotification]);
 
-  const markNotificationRead = useCallback((id: string) => {
+  const addStandAloneHolding = useCallback(async (h: Omit<Holding, "id">) => {
+    if (!base) return;
+    const id = uid();
+    await setDoc(doc(db, `${base}/standAloneHoldings`, id), { ...h, id });
+    addNotification(`${h.symbol} added to holdings`);
+  }, [base, addNotification]);
+
+  const updateStandAloneHolding = useCallback(async (id: string, updates: Partial<Holding>) => {
+    if (!base) return;
+    const h = standAloneHoldings.find(h => h.id === id);
+    if (!h) return;
+    await setDoc(doc(db, `${base}/standAloneHoldings`, id), { ...h, ...updates });
+    addNotification("Holding updated");
+  }, [base, standAloneHoldings, addNotification]);
+
+  const deleteStandAloneHolding = useCallback(async (id: string) => {
+    if (!base) return;
+    await deleteDoc(doc(db, `${base}/standAloneHoldings`, id));
+    addNotification("Holding removed", "info");
+  }, [base, addNotification]);
+
+    const markNotificationRead = useCallback((id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   }, []);
 
@@ -277,8 +306,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      accounts, categories, transactions, notifications, loading,
+      accounts, categories, transactions, standAloneHoldings, notifications, loading,
       addAccount, updateAccount, deleteAccount, addHolding, deleteHolding,
+      addStandAloneHolding, updateStandAloneHolding, deleteStandAloneHolding,
       addCategory, updateCategory, deleteCategory,
       addTransaction, updateTransaction, deleteTransaction,
       addNotification, markNotificationRead, clearNotifications,
