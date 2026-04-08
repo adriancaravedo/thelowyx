@@ -1,6 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useApp } from "@/store/AppContext";
+import { useAuth } from "@/store/AuthContext";
 import Header from "@/components/ui/Header";
 import BottomNav from "@/components/ui/BottomNav";
 import Sparkline from "@/components/ui/Sparkline";
@@ -9,6 +11,7 @@ import Badge from "@/components/ui/Badge";
 import MenuSheet from "@/components/sheets/MenuSheet";
 import SettingsSheet from "@/components/sheets/SettingsSheet";
 import TransactionSheet from "@/components/sheets/TransactionSheet";
+import OnboardingSheet from "@/components/sheets/OnboardingSheet";
 import { formatCurrency, calcChangePercent, getCombinedHistory, getMonthlyIncomeSpend, getCurrentMonthKey, isUpcoming, TimeRange } from "@/lib/utils";
 import { Line } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Filler } from "chart.js";
@@ -17,10 +20,19 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler);
 
 export default function DashboardPage() {
   const { accounts, transactions } = useApp();
+  const { user, profile, loading } = useAuth();
+  const router = useRouter();
   const [range, setRange] = useState<TimeRange>("1M");
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addTxOpen, setAddTxOpen] = useState(false);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) { router.replace("/login"); return; }
+    if (profile && !profile.onboardingComplete) setShowOnboarding(true);
+  }, [user, profile, loading, router]);
 
   const combinedHistory = getCombinedHistory(accounts);
   const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
@@ -150,6 +162,7 @@ export default function DashboardPage() {
       <MenuSheet open={menuOpen} onClose={() => setMenuOpen(false)} onSettingsOpen={() => setSettingsOpen(true)} />
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <TransactionSheet open={addTxOpen} onClose={() => setAddTxOpen(false)} />
+      <OnboardingSheet open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
     </div>
   );
 }
